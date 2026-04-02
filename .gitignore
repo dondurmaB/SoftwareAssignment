@@ -1,0 +1,12 @@
+.DS_Store
+.venv/
+**/.venv/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.vite/
+**/.vite/
+__pycache__/
+**/__pycache__/
+*.pyc
