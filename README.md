@@ -1,6 +1,34 @@
-# Collaborative Document Editor Monorepo PoC
+# Collaborative Document Editor Monorepo
 
-This proof of concept demonstrates a minimal frontend-to-backend flow for a collaborative document editor assignment. It validates frontend-backend communication and validates that the data contracts in the architecture are explicit and implemented consistently across the stack.
+This repository started as an Assignment 1 proof of concept and is now being extended toward the final collaborative document editor with AI writing assistant described in the architecture report.
+
+## Current Progress
+
+- `frontend/` still contains the original React PoC client
+- `backend/src/` still contains the original PoC FastAPI backend
+- `backend/app/` contains the new implementation track for the final backend architecture
+- Backend Milestone 1 is complete in `backend/app/`: authentication and session management
+
+## Backend Milestone 1: Auth Module
+
+Implemented in `backend/app/`:
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+Included in this milestone:
+
+- FastAPI modular backend structure aligned with the architecture
+- Pydantic request/response validation
+- SQLite + SQLAlchemy models for users and refresh tokens
+- bcrypt password hashing via `passlib`
+- stateless access JWTs
+- server-side refresh token storage with revocation
+- protected route dependency for current-user resolution
+- pytest coverage for auth flows
 
 ## What This PoC Demonstrates
 
@@ -9,17 +37,17 @@ This proof of concept demonstrates a minimal frontend-to-backend flow for a coll
 - Python FastAPI backend
 - Explicit DTO contracts shared through documentation and mirrored in code
 - Working document creation, loading, and saving flow
-- In-memory backend storage for fast local setup
+- Initial milestone toward the final backend architecture
 
 ## Intentionally Not Implemented Yet
 
-- Authentication and authorization
 - AI assistance
 - Real-time sync or collaborative editing
-- Database persistence
+- Document CRUD in the new `backend/app/` implementation
+- Document permissions and owner/editor/viewer enforcement
 - Version history
 
-These features are intentionally out of scope for this PoC.
+These features remain in progress for the final assignment implementation.
 
 ## Folder Structure
 
@@ -60,18 +88,37 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Run the FastAPI server with uvicorn:
+3. Copy environment variables:
 
 ```bash
-uvicorn src.main:app --reload --port 8000
+cp .env.example .env
+```
+
+4. Run the active FastAPI backend with uvicorn:
+
+```bash
+uvicorn app.main:app --reload --port 8000
 ```
 
 Backend endpoints:
 
 - `GET /health`
-- `POST /api/documents`
-- `GET /api/documents/{id}`
-- `PUT /api/documents/{id}`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+
+Run backend tests:
+
+```bash
+pytest app/tests/test_auth.py
+```
+
+Note:
+
+- `backend/app/` is the active backend implementation path for new milestones
+- `backend/src/` is the legacy PoC backend kept for reference during the transition
 
 ## Frontend Setup
 
@@ -123,9 +170,9 @@ Then open the frontend URL shown by Vite, typically `http://localhost:5173`.
 
 ## Validation Goal
 
-This PoC validates:
+This repository currently validates:
 
-- frontend-backend communication
-- data contracts from the architecture
+- the original frontend-backend PoC flow
+- the new backend authentication foundation for the final architecture
 
-Auth, AI, version history, and real-time sync are intentionally out of scope for this PoC.
+AI, version history, collaboration, and document permissions are the next milestones.
