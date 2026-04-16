@@ -21,6 +21,12 @@ class DocumentVisibility:
     role: DocumentRole
 
 
+@dataclass
+class DocumentRestoreResult:
+    document: Document
+    version: DocumentVersion
+
+
 class DocumentService:
     """Business logic for document lifecycle and version history."""
 
@@ -34,6 +40,14 @@ class DocumentService:
             current_content=payload.content,
         )
         self.db.add(document)
+        self.db.flush()
+
+        initial_version = self._build_version_snapshot(
+            document_id=document.id,
+            created_by_user_id=owner.id,
+            content_snapshot=document.current_content,
+        )
+        self.db.add(initial_version)
         self._commit_or_rollback()
         self.db.refresh(document)
         return DocumentVisibility(document=document, role=DocumentRole.owner)
@@ -84,10 +98,8 @@ class DocumentService:
             document.current_content = payload.content
 
         document.updated_at = utc_now()
-        version_number = self._next_version_number(document.id)
-        version = DocumentVersion(
+        version = self._build_version_snapshot(
             document_id=document.id,
-            version_number=version_number,
             created_by_user_id=actor.id,
             content_snapshot=document.current_content,
         )
@@ -109,6 +121,40 @@ class DocumentService:
         )
         return list(self.db.scalars(statement))
 
+    def get_document_version_or_404(self, document: Document, version_id: int) -> DocumentVersion:
+        statement = select(DocumentVersion).where(
+            DocumentVersion.id == version_id,
+            DocumentVersion.document_id == document.id,
+        )
+        version = self.db.scalar(statement)
+        if version is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document version not found.",
+            )
+        return version
+
+    def restore_version(
+        self,
+        document: Document,
+        version: DocumentVersion,
+        actor: User,
+    ) -> DocumentRestoreResult:
+        document.current_content = version.content_snapshot
+        document.updated_at = utc_now()
+
+        restored_version = self._build_version_snapshot(
+            document_id=document.id,
+            created_by_user_id=actor.id,
+            content_snapshot=document.current_content,
+        )
+        self.db.add(restored_version)
+        self.db.add(document)
+        self._commit_or_rollback()
+        self.db.refresh(document)
+        self.db.refresh(restored_version)
+        return DocumentRestoreResult(document=document, version=restored_version)
+
     def _next_version_number(self, document_id: int) -> int:
         current_max = self.db.scalar(
             select(func.max(DocumentVersion.version_number)).where(
@@ -116,6 +162,20 @@ class DocumentService:
             )
         )
         return 1 if current_max is None else current_max + 1
+
+    def _build_version_snapshot(
+        self,
+        *,
+        document_id: int,
+        created_by_user_id: int,
+        content_snapshot: str,
+    ) -> DocumentVersion:
+        return DocumentVersion(
+            document_id=document_id,
+            version_number=self._next_version_number(document_id),
+            created_by_user_id=created_by_user_id,
+            content_snapshot=content_snapshot,
+        )
 
     def _commit_or_rollback(self) -> None:
         try:

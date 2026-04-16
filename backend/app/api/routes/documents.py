@@ -20,8 +20,8 @@ from app.schemas.permission import (
     ShareDocumentRequest,
     UpdateDocumentPermissionRequest,
 )
-from app.schemas.version import DocumentVersionRead
-from app.services.document_service import DocumentService, DocumentVisibility
+from app.schemas.version import DocumentRestoreResponse, DocumentVersionRead
+from app.services.document_service import DocumentRestoreResult, DocumentService, DocumentVisibility
 from app.services.permission_service import PermissionService, PermissionSubject
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -57,6 +57,16 @@ def serialize_permission(permission: PermissionSubject) -> DocumentPermissionRea
         email=permission.user.email,
         username=permission.user.username,
         role=permission.role,
+    )
+
+
+def serialize_restore_result(result: DocumentRestoreResult) -> DocumentRestoreResponse:
+    return DocumentRestoreResponse(
+        id=result.document.id,
+        title=result.document.title,
+        current_content=result.document.current_content,
+        updated_at=result.document.updated_at,
+        new_version_number=result.version.version_number,
     )
 
 
@@ -188,12 +198,31 @@ def list_versions(
     """Return document version metadata for owner/editor roles."""
 
     versions = document_service.list_versions(access.document)
+    latest_version_id = versions[0].id if versions else None
     return [
         DocumentVersionRead(
             id=version.id,
             version_number=version.version_number,
             created_by_user_id=version.created_by_user_id,
             created_at=version.created_at,
+            is_current=version.id == latest_version_id,
         )
         for version in versions
     ]
+
+
+@router.post(
+    "/{document_id}/versions/{version_id}/restore",
+    response_model=DocumentRestoreResponse,
+)
+def restore_version(
+    version_id: int,
+    access: DocumentAccessContext = Depends(require_document_owner),
+    current_user: User = Depends(get_current_active_user),
+    document_service: DocumentService = Depends(get_document_service),
+) -> DocumentRestoreResponse:
+    """Restore a previous version by creating a new latest snapshot."""
+
+    version = document_service.get_document_version_or_404(access.document, version_id)
+    restored = document_service.restore_version(access.document, version, current_user)
+    return serialize_restore_result(restored)
