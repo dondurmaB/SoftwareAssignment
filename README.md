@@ -8,6 +8,7 @@ This repository started as an Assignment 1 proof of concept and is now being ext
 - `backend/src/` still contains the original PoC FastAPI backend
 - `backend/app/` contains the new implementation track for the final backend architecture
 - Backend Milestone 1 is complete in `backend/app/`: authentication and session management
+- Backend Milestone 2 is complete in `backend/app/`: document management, sharing, RBAC, and version-history foundation
 
 ## Backend Milestone 1: Auth Module
 
@@ -30,6 +31,30 @@ Included in this milestone:
 - protected route dependency for current-user resolution
 - pytest coverage for auth flows
 
+## Backend Milestone 2: Documents + Access Control
+
+Implemented in `backend/app/`:
+
+- `POST /api/documents`
+- `GET /api/documents`
+- `GET /api/documents/{id}`
+- `PUT /api/documents/{id}`
+- `DELETE /api/documents/{id}`
+- `POST /api/documents/{id}/share`
+- `GET /api/documents/{id}/permissions`
+- `PUT /api/documents/{id}/permissions/{user_id}`
+- `DELETE /api/documents/{id}/permissions/{user_id}`
+- `GET /api/documents/{id}/versions`
+
+Included in this milestone:
+
+- SQLAlchemy models for documents, document permissions, and document versions
+- Server-side document ownership and sharing rules
+- Role-based access control with `owner`, `editor`, and `viewer`
+- Reusable permission dependencies for route enforcement
+- Document version snapshot creation on update
+- pytest coverage for document CRUD, sharing, RBAC, and version-history foundation
+
 ## What This PoC Demonstrates
 
 - Monorepo structure with `frontend/`, `backend/`, `shared/`, `docs/`, and `tests/`
@@ -43,9 +68,9 @@ Included in this milestone:
 
 - AI assistance
 - Real-time sync or collaborative editing
-- Document CRUD in the new `backend/app/` implementation
-- Document permissions and owner/editor/viewer enforcement
-- Version history
+- Version restore
+- WebSocket collaboration
+- AI history and AI permission linkage
 
 These features remain in progress for the final assignment implementation.
 
@@ -108,11 +133,21 @@ Backend endpoints:
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
 - `GET /api/auth/me`
+- `POST /api/documents`
+- `GET /api/documents`
+- `GET /api/documents/{id}`
+- `PUT /api/documents/{id}`
+- `DELETE /api/documents/{id}`
+- `POST /api/documents/{id}/share`
+- `GET /api/documents/{id}/permissions`
+- `PUT /api/documents/{id}/permissions/{user_id}`
+- `DELETE /api/documents/{id}/permissions/{user_id}`
+- `GET /api/documents/{id}/versions`
 
 Run backend tests:
 
 ```bash
-pytest app/tests/test_auth.py
+pytest app/tests
 ```
 
 Note:
@@ -146,7 +181,7 @@ Terminal 1:
 ```bash
 cd backend
 source .venv/bin/activate
-uvicorn src.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 ```
 
 Terminal 2:
@@ -174,5 +209,6 @@ This repository currently validates:
 
 - the original frontend-backend PoC flow
 - the new backend authentication foundation for the final architecture
+- the new backend document management and access-control foundation
 
-AI, version history, collaboration, and document permissions are the next milestones.
+AI integration, version restore, and collaboration are the next milestones.

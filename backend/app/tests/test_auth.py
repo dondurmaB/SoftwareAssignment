@@ -1,72 +1,18 @@
 from __future__ import annotations
 
-import os
-import uuid
-from collections.abc import Generator
-from pathlib import Path
+from collections.abc import Callable
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-TEST_DB_PATH = Path(__file__).resolve().parent / f"test_auth_{uuid.uuid4().hex}.db"
-
-os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH}"
-os.environ["SECRET_KEY"] = "test-secret-key"
-os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "5"
-os.environ["REFRESH_TOKEN_EXPIRE_DAYS"] = "7"
-
-from app.core.config import get_settings
-
-get_settings.cache_clear()
-
-from app.core.database import Base, SessionLocal, engine
-from app.main import app
+from app.core.database import SessionLocal
 from app.models.refresh_token import RefreshToken
 
 
-@pytest.fixture(autouse=True)
-def reset_database() -> Generator[None, None, None]:
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    yield
-    Base.metadata.drop_all(bind=engine)
-
-
-@pytest.fixture(scope="module", autouse=True)
-def cleanup_database_file() -> Generator[None, None, None]:
-    yield
-    if TEST_DB_PATH.exists():
-        TEST_DB_PATH.unlink()
-
-
-@pytest.fixture
-def client() -> Generator[TestClient, None, None]:
-    with TestClient(app) as test_client:
-        yield test_client
-
-
-def register_user(
-    client: TestClient,
-    *,
-    email: str = "alice@example.com",
-    username: str = "alice",
-    password: str = "strongpass123",
-) -> dict[str, object]:
-    response = client.post(
-        "/api/auth/register",
-        json={
-            "email": email,
-            "username": username,
-            "password": password,
-        },
-    )
-    assert response.status_code == 201
-    return response.json()
-
-
-def test_registration(client: TestClient) -> None:
-    payload = register_user(client)
+def test_registration(client: TestClient, create_user: Callable[..., dict[str, object]]) -> None:
+    payload = create_user(email="alice@example.com", username="alice")
 
     assert payload["token_type"] == "bearer"
     assert payload["user"]["email"] == "alice@example.com"
@@ -82,8 +28,8 @@ def test_registration(client: TestClient) -> None:
     assert stored_refresh_token.token != payload["refresh_token"]
 
 
-def test_login(client: TestClient) -> None:
-    register_user(client)
+def test_login(client: TestClient, create_user: Callable[..., dict[str, object]]) -> None:
+    create_user(email="alice@example.com", username="alice")
 
     response = client.post(
         "/api/auth/login",
@@ -97,8 +43,8 @@ def test_login(client: TestClient) -> None:
     assert payload["refresh_token"]
 
 
-def test_invalid_login(client: TestClient) -> None:
-    register_user(client)
+def test_invalid_login(client: TestClient, create_user: Callable[..., dict[str, object]]) -> None:
+    create_user(email="alice@example.com", username="alice")
 
     response = client.post(
         "/api/auth/login",
@@ -109,8 +55,8 @@ def test_invalid_login(client: TestClient) -> None:
     assert response.json()["detail"] == "Invalid email or password."
 
 
-def test_refresh_rotates_refresh_token(client: TestClient) -> None:
-    payload = register_user(client)
+def test_refresh_rotates_refresh_token(client: TestClient, create_user: Callable[..., dict[str, object]]) -> None:
+    payload = create_user(email="alice@example.com", username="alice")
     original_refresh_token = payload["refresh_token"]
 
     refresh_response = client.post(
@@ -132,8 +78,8 @@ def test_refresh_rotates_refresh_token(client: TestClient) -> None:
     assert reused_token_response.json()["detail"] == "Invalid refresh token."
 
 
-def test_logout_revokes_refresh_token(client: TestClient) -> None:
-    register_payload = register_user(client)
+def test_logout_revokes_refresh_token(client: TestClient, create_user: Callable[..., dict[str, object]]) -> None:
+    register_payload = create_user(email="alice@example.com", username="alice")
     refresh_token = register_payload["refresh_token"]
 
     login_response = client.post(
@@ -167,17 +113,21 @@ def test_logout_revokes_refresh_token(client: TestClient) -> None:
     assert second_refresh_response.status_code == 200
 
 
-def test_protected_route_access(client: TestClient) -> None:
+def test_protected_route_access(
+    client: TestClient,
+    create_user: Callable[..., dict[str, object]],
+    auth_headers: Callable[[str], dict[str, str]],
+) -> None:
     unauthorized_response = client.get("/api/auth/me")
     assert unauthorized_response.status_code == 401
     assert unauthorized_response.json()["detail"] == "Authentication credentials were not provided."
 
-    payload = register_user(client)
+    payload = create_user(email="alice@example.com", username="alice")
     access_token = payload["access_token"]
 
     authorized_response = client.get(
         "/api/auth/me",
-        headers={"Authorization": f"Bearer {access_token}"},
+        headers=auth_headers(access_token),
     )
 
     assert authorized_response.status_code == 200
