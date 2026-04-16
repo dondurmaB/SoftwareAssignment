@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
+import { buildApiUrl } from '../api'
 import type { AIFeature } from '../types'
 
 interface StreamOptions {
@@ -37,6 +38,7 @@ export function useAIStream(): UseAIStreamReturn {
 
   const cancelStream = useCallback(() => {
     abortRef.current?.abort()
+    abortRef.current = null
     setStreaming(false)
   }, [])
 
@@ -48,8 +50,15 @@ export function useAIStream(): UseAIStreamReturn {
     abortRef.current = controller
     const token = localStorage.getItem('access_token')
 
+    if (!token) {
+      setError('Sign in before using the AI assistant.')
+      setStreaming(false)
+      abortRef.current = null
+      return
+    }
+
     try {
-      const response = await fetch('/api/ai/stream', {
+      const response = await fetch(buildApiUrl('/api/ai/stream'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -66,12 +75,18 @@ export function useAIStream(): UseAIStreamReturn {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({ detail: 'Request failed' }))
-        setError(err.detail ?? 'Request failed')
+        setError(err.detail ?? (response.status === 404 ? 'AI assistant backend is not available yet.' : 'Request failed'))
         setStreaming(false)
         return
       }
 
-      const reader = response.body!.getReader()
+      if (!response.body) {
+        setError('AI assistant returned no stream data.')
+        setStreaming(false)
+        return
+      }
+
+      const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
       let accumulated = ''
@@ -108,6 +123,7 @@ export function useAIStream(): UseAIStreamReturn {
         setError(err.message ?? 'Stream failed')
       }
     } finally {
+      abortRef.current = null
       setStreaming(false)
     }
   }, [reset])
