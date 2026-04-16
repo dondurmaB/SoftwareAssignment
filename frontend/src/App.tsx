@@ -1,5 +1,6 @@
-import { useState, type CSSProperties } from "react";
+import React, { useState, type CSSProperties } from "react";
 import { createDocument, loadDocument, saveDocument } from "./api";
+import AIPanel from "./components/ai/AIPanel";
 
 function App() {
   const [documentId, setDocumentId] = useState("");
@@ -8,6 +9,7 @@ function App() {
   const [statusMessage, setStatusMessage] = useState("Ready");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
 
   async function handleCreateDocument() {
     if (!title.trim() || !content.trim()) {
@@ -95,6 +97,7 @@ function App() {
   async function handleCopyDocumentId() {
     if (!documentId.trim()) {
       setErrorMessage("No document ID to copy");
+      setStatusMessage("Copy failed");
       return;
     }
 
@@ -104,6 +107,7 @@ function App() {
       setStatusMessage("Document ID copied to clipboard");
     } catch {
       setErrorMessage("Failed to copy document ID");
+      setStatusMessage("Copy failed");
     }
   }
 
@@ -113,8 +117,22 @@ function App() {
         <div style={styles.headerBlock}>
           <h1 style={styles.heading}>Collaborative Document Editor PoC</h1>
           <p style={styles.subheading}>
-            Frontend validation for document creation, loading, saving, and user feedback flow.
+            Frontend validation for document creation, loading, saving, AI integration, and future collaboration features.
           </p>
+        </div>
+
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Authentication</h2>
+          <p style={styles.helperText}>
+            Login and registration UI will connect here once JWT authentication endpoints are fully wired.
+          </p>
+          <div style={styles.buttonRow}>
+            <button style={styles.secondaryButton} type="button">Login</button>
+            <button style={styles.secondaryButton} type="button">Register</button>
+          </div>
+          <div style={styles.placeholderBox}>
+            Authentication screen placeholder.
+          </div>
         </div>
 
         <div style={styles.section}>
@@ -199,12 +217,72 @@ function App() {
             </button>
 
             <button
-              style={styles.secondaryButton}
+              style={{
+                ...styles.secondaryButton,
+                ...(!documentId.trim() ? styles.secondaryButtonDisabled : {})
+              }}
               onClick={handleCopyDocumentId}
               disabled={!documentId.trim()}
             >
               Copy ID
             </button>
+          </div>
+        </div>
+
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>AI Assistant</h2>
+          <p style={styles.helperText}>
+            Open the AI panel below. In this screen, the panel is connected for frontend display and flow validation.
+          </p>
+
+          <div style={styles.buttonRow}>
+            <button
+              style={styles.button}
+              onClick={() => setShowAiPanel((current) => !current)}
+            >
+              {showAiPanel ? "Hide AI Panel" : "Open AI Panel"}
+            </button>
+          </div>
+
+          {showAiPanel ? (
+            <div style={styles.aiPanelWrapper}>
+              <AIPanel
+                editor={null}
+                docId={documentId}
+                canEdit={true}
+                onClose={() => setShowAiPanel(false)}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Version History</h2>
+          <p style={styles.helperText}>
+            Version restore UI will appear here once version history endpoints are fully connected.
+          </p>
+          <div style={styles.placeholderBox}>
+            No versions loaded in this screen yet.
+          </div>
+        </div>
+
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Sharing & Permissions</h2>
+          <p style={styles.helperText}>
+            Owner / editor / viewer controls will appear here once sharing endpoints are connected.
+          </p>
+          <div style={styles.placeholderBox}>
+            Sharing UI placeholder.
+          </div>
+        </div>
+
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Collaboration Status</h2>
+          <p style={styles.helperText}>
+            Real-time presence, active users, and reconnection status will appear here once the collaboration layer is connected.
+          </p>
+          <div style={styles.placeholderBox}>
+            No active collaboration session in this screen yet.
           </div>
         </div>
 
@@ -231,7 +309,7 @@ const styles: Record<string, CSSProperties> = {
     fontFamily: "Arial, sans-serif"
   },
   card: {
-    maxWidth: "820px",
+    maxWidth: "920px",
     margin: "0 auto",
     padding: "28px",
     background: "#ffffff",
@@ -269,6 +347,12 @@ const styles: Record<string, CSSProperties> = {
   sectionTitle: {
     margin: 0,
     fontSize: "20px"
+  },
+  helperText: {
+    margin: 0,
+    color: "#6b7280",
+    fontSize: "14px",
+    lineHeight: 1.5
   },
   label: {
     display: "flex",
@@ -320,6 +404,21 @@ const styles: Record<string, CSSProperties> = {
   buttonDisabled: {
     opacity: 0.6,
     cursor: "not-allowed"
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.6,
+    cursor: "not-allowed"
+  },
+  placeholderBox: {
+    padding: "14px",
+    borderRadius: "10px",
+    border: "1px dashed #cbd5e1",
+    background: "#ffffff",
+    color: "#6b7280",
+    fontSize: "14px"
+  },
+  aiPanelWrapper: {
+    minHeight: "320px"
   },
   statusBox: {
     padding: "14px",
