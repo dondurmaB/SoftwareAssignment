@@ -2,6 +2,10 @@ import type { CreateDocumentRequest, DocumentDto, UpdateDocumentRequest } from "
 
 const API_BASE_URL = "http://localhost:8000";
 
+export function buildApiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
+
 async function parseResponse(response: Response): Promise<DocumentDto> {
   if (!response.ok) {
     let errorMessage = "Request failed";
@@ -20,7 +24,7 @@ async function parseResponse(response: Response): Promise<DocumentDto> {
 }
 
 export async function createDocument(payload: CreateDocumentRequest): Promise<DocumentDto> {
-  const response = await fetch(`${API_BASE_URL}/api/documents`, {
+  const response = await fetch(buildApiUrl("/api/documents"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -30,7 +34,7 @@ export async function createDocument(payload: CreateDocumentRequest): Promise<Do
 }
 
 export async function loadDocument(documentId: string): Promise<DocumentDto> {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}`);
+  const response = await fetch(buildApiUrl(`/api/documents/${documentId}`));
   return parseResponse(response);
 }
 
@@ -38,7 +42,7 @@ export async function saveDocument(
   documentId: string,
   payload: UpdateDocumentRequest
 ): Promise<DocumentDto> {
-  const response = await fetch(`${API_BASE_URL}/api/documents/${documentId}`, {
+  const response = await fetch(buildApiUrl(`/api/documents/${documentId}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
