@@ -1,29 +1,19 @@
 import { useState, useRef, useCallback } from 'react'
-import type { AIFeature } from '../types'
+import type { AIAction } from '../types'
+import { getValidToken } from '../api'
 
 interface StreamOptions {
-  documentId: string
-  feature: AIFeature
+  documentId: number
+  action: AIAction
   selectedText: string
   options?: Record<string, string>
 }
 
-interface UseAIStreamReturn {
-  streaming: boolean
-  streamedText: string
-  interactionId: string | null
-  suggestionId: string | null
-  error: string | null
-  startStream: (opts: StreamOptions) => void
-  cancelStream: () => void
-  reset: () => void
-}
-
-export function useAIStream(): UseAIStreamReturn {
+export function useAIStream() {
   const [streaming, setStreaming] = useState(false)
   const [streamedText, setStreamedText] = useState('')
-  const [interactionId, setInteractionId] = useState<string | null>(null)
-  const [suggestionId, setSuggestionId] = useState<string | null>(null)
+  const [interactionId, setInteractionId] = useState<number | null>(null)
+  const [suggestionId, setSuggestionId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -46,10 +36,10 @@ export function useAIStream(): UseAIStreamReturn {
 
     const controller = new AbortController()
     abortRef.current = controller
-    const token = localStorage.getItem('access_token')
+    const token = await getValidToken()
 
     try {
-      const response = await fetch('/api/ai/stream', {
+      const response = await fetch('http://localhost:8000/api/ai/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -57,7 +47,7 @@ export function useAIStream(): UseAIStreamReturn {
         },
         body: JSON.stringify({
           document_id: opts.documentId,
-          feature: opts.feature,
+          action: opts.action,
           selected_text: opts.selectedText,
           options: opts.options ?? {},
         }),
@@ -89,14 +79,13 @@ export function useAIStream(): UseAIStreamReturn {
           if (line.startsWith('event: done')) continue
           if (line.startsWith('data: ')) {
             const raw = line.slice(6)
-            // Check if this is the final done payload
             if (raw.startsWith('{') && raw.includes('interaction_id')) {
               try {
                 const payload = JSON.parse(raw)
                 setInteractionId(payload.interaction_id)
                 setSuggestionId(payload.suggestion_id)
               } catch {}
-            } else {
+            } else if (raw.trim()) {
               accumulated += raw
               setStreamedText(accumulated)
             }
@@ -104,9 +93,7 @@ export function useAIStream(): UseAIStreamReturn {
         }
       }
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setError(err.message ?? 'Stream failed')
-      }
+      if (err.name !== 'AbortError') setError(err.message ?? 'Stream failed')
     } finally {
       setStreaming(false)
     }

@@ -1,33 +1,29 @@
 import { useState, useRef } from 'react'
 import { useAIStream } from '../../hooks/useAIStream'
 import { aiApi } from '../../api'
-import { Bot, X, Wand2, ChevronDown, Check, RotateCcw, Square, AlertCircle, Loader2 } from 'lucide-react'
+import { Bot, X, Wand2, Check, RotateCcw, Square, AlertCircle, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { AIFeature } from '../../types'
+import type { AIAction } from '../../types'
 import type { Editor } from '@tiptap/react'
 
 interface Props {
   editor: Editor | null
-  docId: string
+  docId: number
   onClose: () => void
   canEdit: boolean
 }
 
-const FEATURES: { value: AIFeature; label: string; desc: string }[] = [
-  { value: 'rewrite',  label: 'Rewrite',       desc: 'Improve clarity and flow' },
-  { value: 'summarize',label: 'Summarize',      desc: 'Create a concise summary' },
-  { value: 'translate',label: 'Translate',      desc: 'Translate to another language' },
-  { value: 'enhance',  label: 'Enhance',        desc: 'Improve structure and style' },
-  { value: 'grammar',  label: 'Fix Grammar',    desc: 'Correct errors and spelling' },
-  { value: 'custom',   label: 'Custom Prompt',  desc: 'Give a custom instruction' },
+// Backend supports: rewrite | summarize | translate | enhance
+const FEATURES: { value: AIAction; label: string; desc: string }[] = [
+  { value: 'rewrite',   label: 'Rewrite',   desc: 'Improve clarity and flow' },
+  { value: 'summarize', label: 'Summarize', desc: 'Create a concise summary' },
+  { value: 'translate', label: 'Translate', desc: 'Translate to another language' },
+  { value: 'enhance',   label: 'Enhance',   desc: 'Improve structure and style' },
 ]
 
 export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
-  const [feature, setFeature] = useState<AIFeature>('rewrite')
-  const [tone, setTone] = useState('professional')
-  const [summaryLength, setSummaryLength] = useState('medium')
+  const [action, setAction] = useState<AIAction>('rewrite')
   const [targetLang, setTargetLang] = useState('French')
-  const [customInstruction, setCustomInstruction] = useState('')
   const [editedSuggestion, setEditedSuggestion] = useState('')
   const [phase, setPhase] = useState<'configure' | 'result'>('configure')
   const previousContentRef = useRef<string>('')
@@ -41,47 +37,32 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
   }
 
   const buildOptions = (): Record<string, string> => {
-    switch (feature) {
-      case 'rewrite':  return { tone }
-      case 'summarize': return { length: summaryLength }
-      case 'translate': return { target_language: targetLang }
-      case 'custom':   return { instruction: customInstruction }
-      default:         return {}
-    }
+    if (action === 'translate') return { target_language: targetLang }
+    return {}
   }
 
   const handleRun = () => {
     const selectedText = getSelectedText()
-    if (!selectedText.trim()) {
-      toast.error('Select some text first')
-      return
-    }
-    if (feature === 'custom' && !customInstruction.trim()) {
-      toast.error('Enter an instruction')
-      return
-    }
+    if (!selectedText.trim()) { toast.error('Select some text first'); return }
     setEditedSuggestion('')
     setPhase('result')
-    startStream({ documentId: docId, feature, selectedText, options: buildOptions() })
+    startStream({ documentId: docId, action, selectedText, options: buildOptions() })
   }
 
-  // Once streaming finished, populate editable textarea
   const displayText = editedSuggestion || streamedText
 
   const handleAccept = async () => {
     if (!suggestionId || !editor) return
     const finalText = editedSuggestion || streamedText
     try {
-      // Save undo snapshot
       previousContentRef.current = editor.getHTML()
-      // Replace selected text in editor
       const { from, to } = editor.state.selection
       if (from !== to) {
         editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, finalText).run()
       } else {
         editor.chain().focus().insertContent(finalText).run()
       }
-      await aiApi.decideOnSuggestion(suggestionId, 'accepted', editedSuggestion || undefined)
+      await aiApi.decideOnSuggestion(suggestionId, 'accepted')
       toast.success('Suggestion applied')
       resetPanel()
     } catch {
@@ -104,17 +85,12 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
     }
   }
 
-  const resetPanel = () => {
-    reset()
-    setPhase('configure')
-    setEditedSuggestion('')
-  }
+  const resetPanel = () => { reset(); setPhase('configure'); setEditedSuggestion('') }
 
   const selectedText = getSelectedText()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface)' }}>
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Bot size={16} color="var(--primary)" />
@@ -124,7 +100,6 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
-
         {!canEdit && (
           <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 14px', fontSize: 13, color: 'var(--text-muted)' }}>
             Viewers cannot use the AI assistant.
@@ -133,16 +108,12 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
 
         {phase === 'configure' && canEdit && (
           <>
-            {/* Feature selector */}
             <div className="form-group">
               <label>Feature</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {FEATURES.map(f => (
-                  <label
-                    key={f.value}
-                    style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 'var(--radius)', border: `1px solid ${feature === f.value ? 'var(--primary)' : 'var(--border)'}`, background: feature === f.value ? 'var(--primary-light)' : 'var(--surface)', cursor: 'pointer', transition: 'all 0.1s' }}
-                  >
-                    <input type="radio" name="feature" value={f.value} checked={feature === f.value} onChange={() => setFeature(f.value)} style={{ marginTop: 2 }} />
+                  <label key={f.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 'var(--radius)', border: `1px solid ${action === f.value ? 'var(--primary)' : 'var(--border)'}`, background: action === f.value ? 'var(--primary-light)' : 'var(--surface)', cursor: 'pointer', transition: 'all 0.1s' }}>
+                    <input type="radio" name="action" value={f.value} checked={action === f.value} onChange={() => setAction(f.value)} style={{ marginTop: 2 }} />
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 500 }}>{f.label}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{f.desc}</div>
@@ -152,54 +123,17 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
               </div>
             </div>
 
-            {/* Feature-specific options */}
-            {feature === 'rewrite' && (
-              <div className="form-group">
-                <label>Tone</label>
-                <select className="input" value={tone} onChange={e => setTone(e.target.value)}>
-                  <option value="professional">Professional</option>
-                  <option value="formal">Formal</option>
-                  <option value="casual">Casual</option>
-                  <option value="friendly">Friendly</option>
-                  <option value="academic">Academic</option>
-                </select>
-              </div>
-            )}
-            {feature === 'summarize' && (
-              <div className="form-group">
-                <label>Summary length</label>
-                <select className="input" value={summaryLength} onChange={e => setSummaryLength(e.target.value)}>
-                  <option value="short">Short (1–2 sentences)</option>
-                  <option value="medium">Medium (1 paragraph)</option>
-                  <option value="long">Long (several paragraphs)</option>
-                </select>
-              </div>
-            )}
-            {feature === 'translate' && (
+            {action === 'translate' && (
               <div className="form-group">
                 <label>Target language</label>
                 <select className="input" value={targetLang} onChange={e => setTargetLang(e.target.value)}>
-                  {['French','Spanish','German','Italian','Portuguese','Arabic','Chinese','Japanese','Korean','Russian'].map(l => (
+                  {['French', 'Spanish', 'German', 'Italian', 'Portuguese', 'Arabic', 'Chinese', 'Japanese', 'Korean', 'Russian'].map(l => (
                     <option key={l} value={l}>{l}</option>
                   ))}
                 </select>
               </div>
             )}
-            {feature === 'custom' && (
-              <div className="form-group">
-                <label>Instruction</label>
-                <textarea
-                  className="input"
-                  value={customInstruction}
-                  onChange={e => setCustomInstruction(e.target.value)}
-                  placeholder="e.g. Make this more concise and add bullet points"
-                  rows={3}
-                  style={{ resize: 'vertical', fontFamily: 'inherit' }}
-                />
-              </div>
-            )}
 
-            {/* Selected text preview */}
             <div className="form-group">
               <label>Selected text {!selectedText && <span style={{ color: 'var(--danger)', fontWeight: 400 }}>(none selected)</span>}</label>
               <div style={{ background: 'var(--surface2)', padding: '10px 12px', borderRadius: 'var(--radius)', fontSize: 13, lineHeight: 1.6, maxHeight: 100, overflowY: 'auto', color: selectedText ? 'var(--text)' : 'var(--text-light)', fontStyle: selectedText ? 'normal' : 'italic' }}>
@@ -215,7 +149,6 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
 
         {phase === 'result' && canEdit && (
           <>
-            {/* Original */}
             <div className="form-group">
               <label>Original text</label>
               <div style={{ background: 'var(--surface2)', padding: '10px 12px', borderRadius: 'var(--radius)', fontSize: 13, lineHeight: 1.6, maxHeight: 100, overflowY: 'auto' }}>
@@ -223,7 +156,6 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
               </div>
             </div>
 
-            {/* Streaming suggestion */}
             <div className="form-group">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <label style={{ margin: 0 }}>AI Suggestion {streaming && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(generating…)</span>}</label>
@@ -235,20 +167,15 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
               </div>
 
               {error ? (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: 'var(--danger-light)', padding: '10px 12px', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--danger)' }}>
-                  <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                  {error}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#fff5f5', padding: '10px 12px', borderRadius: 'var(--radius)', fontSize: 13, color: 'var(--danger)', border: '1px solid #fecaca' }}>
+                  <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} /> {error}
                 </div>
               ) : (
-                <textarea
-                  className="input"
-                  value={streaming ? streamedText : displayText}
+                <textarea className="input" value={streaming ? streamedText : displayText}
                   onChange={e => !streaming && setEditedSuggestion(e.target.value)}
-                  readOnly={streaming}
-                  rows={8}
+                  readOnly={streaming} rows={8}
                   placeholder={streaming ? '' : 'Edit suggestion before accepting…'}
-                  style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, background: streaming ? 'var(--surface2)' : 'var(--surface)' }}
-                />
+                  style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: 13, lineHeight: 1.7, background: streaming ? 'var(--surface2)' : 'var(--surface)' }} />
               )}
 
               {streaming && (
@@ -258,15 +185,10 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
               )}
             </div>
 
-            {/* Actions */}
             {!streaming && !error && displayText && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button className="btn btn-primary" onClick={handleAccept}>
-                  <Check size={15} /> Accept & Apply
-                </button>
-                <button className="btn btn-secondary" onClick={handleReject}>
-                  <X size={15} /> Reject
-                </button>
+                <button className="btn btn-primary" onClick={handleAccept}><Check size={15} /> Accept & Apply</button>
+                <button className="btn btn-secondary" onClick={handleReject}><X size={15} /> Reject</button>
                 {previousContentRef.current && (
                   <button className="btn btn-ghost" onClick={handleUndo} style={{ fontSize: 13 }}>
                     <RotateCcw size={13} /> Undo last acceptance
@@ -275,13 +197,7 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
               </div>
             )}
 
-            {!streaming && (error || !displayText) && (
-              <button className="btn btn-secondary" onClick={resetPanel}>
-                ← Back to configure
-              </button>
-            )}
-
-            {!streaming && displayText && (
+            {!streaming && (
               <button className="btn btn-ghost btn-sm" onClick={resetPanel} style={{ color: 'var(--text-muted)', fontSize: 12 }}>
                 ← Try different feature
               </button>
