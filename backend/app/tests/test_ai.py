@@ -8,7 +8,10 @@ from collections.abc import AsyncIterator, Callable, Generator
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_ai_cancellation_registry, get_ai_provider
+import app.api.deps as deps_module
+from app.ai.mock_provider import MockAIProvider
+from app.api.deps import build_ai_provider, get_ai_cancellation_registry, get_ai_provider
+from app.core.config import Settings
 from app.main import app
 from app.models.ai_interaction import AIAction, AIInteraction, AIInteractionStatus
 from app.models.ai_suggestion import AISuggestion, AISuggestionDecisionStatus
@@ -47,6 +50,63 @@ def reset_ai_cancellation_registry() -> Generator[None, None, None]:
     registry.reset()
     yield
     registry.reset()
+
+
+def test_build_ai_provider_defaults_to_mock() -> None:
+    settings = Settings(_env_file=None, AI_PROVIDER="mock")
+
+    provider = build_ai_provider(settings)
+
+    assert isinstance(provider, MockAIProvider)
+
+
+def test_build_ai_provider_selects_openai_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeOpenAIProvider:
+        def __init__(self, *, api_key: str, model_name: str) -> None:
+            captured["api_key"] = api_key
+            captured["model_name"] = model_name
+
+    monkeypatch.setattr(deps_module, "OpenAIProvider", FakeOpenAIProvider)
+    settings = Settings(
+        _env_file=None,
+        AI_PROVIDER="openai",
+        OPENAI_API_KEY="test-openai-key",
+        OPENAI_MODEL="test-openai-model",
+    )
+
+    provider = build_ai_provider(settings)
+
+    assert isinstance(provider, FakeOpenAIProvider)
+    assert captured == {
+        "api_key": "test-openai-key",
+        "model_name": "test-openai-model",
+    }
+
+
+def test_build_ai_provider_requires_openai_api_key() -> None:
+    settings = Settings(
+        _env_file=None,
+        AI_PROVIDER="openai",
+        OPENAI_API_KEY=None,
+        OPENAI_MODEL="test-openai-model",
+    )
+
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+        build_ai_provider(settings)
+
+
+def test_build_ai_provider_requires_openai_model() -> None:
+    settings = Settings(
+        _env_file=None,
+        AI_PROVIDER="openai",
+        OPENAI_API_KEY="test-openai-key",
+        OPENAI_MODEL=None,
+    )
+
+    with pytest.raises(RuntimeError, match="OPENAI_MODEL"):
+        build_ai_provider(settings)
 
 
 def create_document(

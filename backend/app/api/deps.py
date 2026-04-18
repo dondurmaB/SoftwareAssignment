@@ -8,7 +8,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.ai.cancellation import AICancellationRegistry
+from app.ai.openai_provider import OpenAIProvider
 from app.core.database import get_db
+from app.core.config import Settings, get_settings
 from app.ai.mock_provider import MockAIProvider
 from app.ai.provider import AIProvider
 from app.models.document import Document
@@ -37,7 +39,26 @@ def get_permission_service(db: Session = Depends(get_db)) -> PermissionService:
 
 
 def get_ai_provider() -> AIProvider:
-    return MockAIProvider()
+    return build_ai_provider(get_settings())
+
+
+def build_ai_provider(settings: Settings) -> AIProvider:
+    if settings.AI_PROVIDER == "mock":
+        return MockAIProvider()
+
+    if not settings.OPENAI_API_KEY:
+        raise RuntimeError(
+            "AI_PROVIDER=openai requires OPENAI_API_KEY to be set."
+        )
+    if not settings.OPENAI_MODEL:
+        raise RuntimeError(
+            "AI_PROVIDER=openai requires OPENAI_MODEL to be set."
+        )
+
+    return OpenAIProvider(
+        api_key=settings.OPENAI_API_KEY,
+        model_name=settings.OPENAI_MODEL,
+    )
 
 
 @lru_cache
