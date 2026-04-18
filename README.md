@@ -4,13 +4,17 @@ This repository started as an Assignment 1 proof of concept and is now being ext
 
 ## Current Progress
 
-- `frontend/` still contains the original React PoC client
-- `backend/src/` still contains the original PoC FastAPI backend
+- `frontend/` still contains the original React PoC client plus partial feature scaffolding; end-to-end AI integration is not complete yet
+- `backend/src/` is the legacy PoC FastAPI backend kept only for reference
 - `backend/app/` contains the new implementation track for the final backend architecture
 - Backend Milestone 1 is complete in `backend/app/`: authentication and session management
 - Backend Milestone 2 is complete in `backend/app/`: document management, sharing, RBAC, and version-history foundation
 - Backend Milestone 2 follow-up is complete in `backend/app/`: version restore and versioning completion
 - Backend Milestone 3 is complete in `backend/app/`: baseline authenticated WebSocket collaboration
+- Backend Milestone 4 is complete in `backend/app/`: AI backend foundation with streaming, persisted history, and suggestion decision tracking
+- Backend Milestone 4 follow-up is complete in `backend/app/`: cancellation support for in-progress AI interactions
+- Backend Milestone 4 provider follow-up is complete in `backend/app/`: configurable mock/OpenAI provider support
+- Backend Milestone 4 action follow-up is complete in `backend/app/`: `translate` and `enhance` support added to the active AI module
 
 ## Backend Milestone 1: Auth Module
 
@@ -91,7 +95,39 @@ Included in this milestone:
 - This is acceptable for the assignment baseline, but concurrent edits can overwrite each other under contention.
 - Live WebSocket edits update `current_content` only and do not create `DocumentVersion` snapshots.
 - This is a deliberate design choice to avoid version spam during keystroke-level sync.
+- Remote cursors are not implemented yet.
+- Offline edit queueing is not implemented yet.
 - The current WebSocket service uses the existing synchronous SQLAlchemy session/service path inside async handlers; this is acceptable for assignment/demo scale, but not ideal for higher-concurrency production workloads.
+
+## Backend Milestone 4: AI Backend Baseline
+
+Implemented in `backend/app/`:
+
+- `POST /api/ai/stream`
+- `GET /api/ai/history/{document_id}`
+- `POST /api/ai/suggestions/{suggestion_id}/decision`
+- `POST /api/ai/interactions/{interaction_id}/cancel`
+
+Included in this milestone:
+
+- Provider abstraction with a mock provider for development/testing and an OpenAI-backed provider selected through configuration
+- Configurable prompt templates for `rewrite`, `summarize`, `translate`, and `enhance`
+- Authenticated AI access restricted to document `owner` and `editor`
+- SSE-based `text/event-stream` response streaming
+- Persistent `AIInteraction` and `AISuggestion` storage
+- Suggestion decision tracking for `accepted` and `rejected`
+- Cancellation support for in-progress AI interactions
+- pytest coverage for streaming, failure handling, decision persistence, and cancellation behavior
+
+### AI Backend Note
+
+- The active AI backend currently supports `rewrite`, `summarize`, `translate`, and `enhance`.
+- The backend supports both a mock provider and an OpenAI-backed provider selected through configuration.
+- Mock is the default for local development and testing, and tests continue to use the mock provider override without making real external API calls.
+- `OPENAI_API_KEY` and `OPENAI_MODEL` are only required when `AI_PROVIDER=openai`.
+- AI interactions and suggestions are persisted in the backend, including decision status and canceled interaction status.
+- Real provider support exists in the backend, but frontend AI integration is still incomplete.
+- Partial acceptance and automatic application of AI suggestion text into the document are not implemented yet.
 
 ## What This PoC Demonstrates
 
@@ -100,15 +136,17 @@ Included in this milestone:
 - Python FastAPI backend
 - Explicit DTO contracts shared through documentation and mirrored in code
 - Working document creation, loading, and saving flow
-- Initial milestone toward the final backend architecture
+- Active backend milestones for auth, documents/permissions, version restore, WebSocket collaboration, and AI streaming foundation
 
 ## Intentionally Not Implemented Yet
 
-- AI assistance
 - CRDT/OT conflict resolution
 - Remote cursors
 - Offline edit queueing
-- AI history and AI permission linkage
+- Additional AI actions beyond the current `rewrite`, `summarize`, `translate`, and `enhance` set
+- Additional AI providers beyond the mock/OpenAI-backed backend support
+- Frontend end-to-end AI suggestion workflow
+- Partial acceptance / direct application of AI suggestions into document content
 
 These features remain in progress for the final assignment implementation.
 
@@ -157,7 +195,16 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-4. Run the active FastAPI backend with uvicorn:
+4. Configure AI provider settings if needed:
+
+- `AI_PROVIDER=mock|openai`
+- default is `AI_PROVIDER=mock`
+- when `AI_PROVIDER=openai`, set:
+  - `OPENAI_API_KEY`
+  - `OPENAI_MODEL`
+- `.env.example` includes these backend AI provider variables
+
+5. Run the active FastAPI backend with uvicorn:
 
 ```bash
 uvicorn app.main:app --reload --port 8000
@@ -183,6 +230,10 @@ Backend endpoints:
 - `GET /api/documents/{id}/versions`
 - `POST /api/documents/{id}/versions/{version_id}/restore`
 - `WS /ws/documents/{document_id}?token=<access_token>`
+- `POST /api/ai/stream`
+- `GET /api/ai/history/{document_id}`
+- `POST /api/ai/suggestions/{suggestion_id}/decision`
+- `POST /api/ai/interactions/{interaction_id}/cancel`
 
 Run backend tests:
 
@@ -252,5 +303,8 @@ This repository currently validates:
 - the new backend document management and access-control foundation
 - backend version restore and versioning completion
 - baseline authenticated WebSocket collaboration
+- backend AI streaming foundation with persisted history, decision tracking, and the current `rewrite` / `summarize` / `translate` / `enhance` action set
+- backend AI interaction cancellation behavior
+- backend AI provider selection with mock default and optional OpenAI-backed provider support
 
-AI integration and richer collaboration behavior are the next milestones.
+Richer frontend AI integration and more advanced collaboration behavior are the next milestones.
