@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.ai.cancellation import AICancellationRegistry
 from app.core.database import get_db
 from app.ai.mock_provider import MockAIProvider
 from app.ai.provider import AIProvider
@@ -39,11 +40,17 @@ def get_ai_provider() -> AIProvider:
     return MockAIProvider()
 
 
+@lru_cache
+def get_ai_cancellation_registry() -> AICancellationRegistry:
+    return AICancellationRegistry()
+
+
 def get_ai_service(
     db: Session = Depends(get_db),
     ai_provider: AIProvider = Depends(get_ai_provider),
+    cancellation_registry: AICancellationRegistry = Depends(get_ai_cancellation_registry),
 ) -> AIService:
-    return AIService(db=db, provider=ai_provider)
+    return AIService(db=db, provider=ai_provider, cancellation_registry=cancellation_registry)
 
 
 @lru_cache

@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 
 from app.ai.schemas import (
     AIHistoryItem,
+    AIInteractionCancelResponse,
     AISuggestionDecisionRequest,
     AISuggestionDecisionResponse,
     AIStreamRequest,
@@ -108,3 +109,25 @@ def update_suggestion_decision(
         suggestion=suggestion,
         decision=payload.decision,
     )
+
+
+@router.post("/interactions/{interaction_id}/cancel", response_model=AIInteractionCancelResponse)
+def cancel_ai_interaction(
+    interaction_id: int,
+    current_user: User = Depends(get_current_active_user),
+    permission_service: PermissionService = Depends(get_permission_service),
+    document_service: DocumentService = Depends(get_document_service),
+    ai_service: AIService = Depends(get_ai_service),
+) -> AIInteractionCancelResponse:
+    """Cancel an in-progress AI interaction."""
+
+    interaction = ai_service.get_interaction_or_404(interaction_id)
+    document = document_service.get_document_or_404(interaction.document_id)
+    role = permission_service.get_user_document_role(document, current_user)
+    if role not in (DocumentRole.owner, DocumentRole.editor):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only owners and editors can cancel AI interactions for this document.",
+        )
+
+    return ai_service.cancel_interaction(interaction)

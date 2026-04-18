@@ -37,6 +37,10 @@ class AIStreamDonePayload(BaseModel):
     suggestion_id: int
 
 
+class AICanceledPayload(BaseModel):
+    interaction_id: int
+
+
 class AIHistoryItem(BaseModel):
     interaction_id: int
     document_id: int
@@ -68,3 +72,8 @@ class AISuggestionDecisionResponse(BaseModel):
     suggestion_id: int
     interaction_id: int
     decision_status: AISuggestionDecisionStatus
+
+
+class AIInteractionCancelResponse(BaseModel):
+    interaction_id: int
+    status: AIInteractionStatus

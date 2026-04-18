@@ -7,9 +7,12 @@ from fastapi import HTTPException, status
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
+from app.ai.cancellation import AICancellationRegistry
 from app.ai.prompts import build_prompt_set
 from app.ai.provider import AIProvider
 from app.ai.schemas import (
+    AICanceledPayload,
+    AIInteractionCancelResponse,
     AIHistoryItem,
     AISuggestionDecisionResponse,
     AIStreamDonePayload,
@@ -24,9 +27,15 @@ from app.models.user import User
 class AIService:
     """Prompt construction, streaming, and history persistence for AI interactions."""
 
-    def __init__(self, db: Session, provider: AIProvider) -> None:
+    def __init__(
+        self,
+        db: Session,
+        provider: AIProvider,
+        cancellation_registry: AICancellationRegistry,
+    ) -> None:
         self.db = db
         self.provider = provider
+        self.cancellation_registry = cancellation_registry
 
     async def stream_response(
         self,
@@ -48,6 +57,7 @@ class AIService:
         self.db.add(interaction)
         self.db.commit()
         self.db.refresh(interaction)
+        self.cancellation_registry.clear(interaction.id)
 
         accumulated_chunks: list[str] = []
         try:
@@ -56,8 +66,19 @@ class AIService:
                 system_prompt=prompt_set.system_prompt,
                 user_prompt=prompt_set.user_prompt,
             ):
+                if self.is_canceled(interaction.id):
+                    yield self._format_canceled_event(
+                        AICanceledPayload(interaction_id=interaction.id).model_dump_json()
+                    )
+                    return
                 accumulated_chunks.append(chunk)
                 yield self._format_data_event(chunk)
+
+            if self.is_canceled(interaction.id):
+                yield self._format_canceled_event(
+                    AICanceledPayload(interaction_id=interaction.id).model_dump_json()
+                )
+                return
 
             suggestion = AISuggestion(
                 ai_interaction_id=interaction.id,
@@ -75,10 +96,17 @@ class AIService:
             )
             yield self._format_done_event(done_payload.model_dump_json())
         except Exception:
+            if self.is_canceled(interaction.id):
+                yield self._format_canceled_event(
+                    AICanceledPayload(interaction_id=interaction.id).model_dump_json()
+                )
+                return
             interaction.status = AIInteractionStatus.failed
             self.db.add(interaction)
             self.db.commit()
             yield self._format_error_event("AI generation failed.")
+        finally:
+            self.cancellation_registry.clear(interaction.id)
 
     def get_history(self, document: Document) -> list[AIHistoryItem]:
         statement: Select[tuple[AIInteraction, User, AISuggestion | None]] = (
@@ -111,6 +139,15 @@ class AIService:
     def get_interaction(self, interaction_id: int) -> AIInteraction | None:
         return self.db.get(AIInteraction, interaction_id)
 
+    def get_interaction_or_404(self, interaction_id: int) -> AIInteraction:
+        interaction = self.db.get(AIInteraction, interaction_id)
+        if interaction is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="AI interaction not found.",
+            )
+        return interaction
+
     def get_suggestion_for_interaction(self, interaction_id: int) -> AISuggestion | None:
         return self.db.scalar(
             select(AISuggestion).where(AISuggestion.ai_interaction_id == interaction_id)
@@ -141,6 +178,40 @@ class AIService:
             decision_status=suggestion.decision_status,
         )
 
+    def cancel_interaction(self, interaction: AIInteraction) -> AIInteractionCancelResponse:
+        if interaction.status == AIInteractionStatus.completed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Completed AI interactions cannot be canceled.",
+            )
+        if interaction.status == AIInteractionStatus.failed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Failed AI interactions cannot be canceled.",
+            )
+        if interaction.status == AIInteractionStatus.canceled:
+            self.mark_cancellation_requested(interaction.id)
+            return AIInteractionCancelResponse(
+                interaction_id=interaction.id,
+                status=interaction.status,
+            )
+
+        interaction.status = AIInteractionStatus.canceled
+        self.db.add(interaction)
+        self.db.commit()
+        self.db.refresh(interaction)
+        self.mark_cancellation_requested(interaction.id)
+        return AIInteractionCancelResponse(
+            interaction_id=interaction.id,
+            status=interaction.status,
+        )
+
+    def mark_cancellation_requested(self, interaction_id: int) -> None:
+        self.cancellation_registry.mark_cancellation_requested(interaction_id)
+
+    def is_canceled(self, interaction_id: int) -> bool:
+        return self.cancellation_registry.is_canceled(interaction_id)
+
     @staticmethod
     def _format_data_event(content: str) -> str:
         return f"data: {content}\n\n"
@@ -153,3 +224,8 @@ class AIService:
     @staticmethod
     def _format_error_event(detail: str) -> str:
         return f"event: error\ndata: {detail}\n\n"
+
+    @staticmethod
+    def _format_canceled_event(payload: str) -> str:
+        data = json.loads(payload)
+        return f"event: canceled\ndata: {json.dumps(data)}\n\n"
