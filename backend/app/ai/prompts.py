@@ -30,6 +30,34 @@ def build_prompt_set(action: AIAction, selected_text: str, options: dict[str, st
             f"the important ideas. Target summary length: {length}. "
             "Return only the summary."
         )
+    elif action == AIAction.translate:
+        target_language = options.get("target_language", "English")
+        system_prompt = (
+            "You are a professional translator. Translate the provided text faithfully "
+            f"into {target_language}. Preserve the original meaning and nuance where possible. "
+            "Return only the translated text."
+        )
+    elif action == AIAction.enhance:
+        instruction = options.get("instruction")
+        style = options.get("style")
+        if instruction:
+            system_prompt = (
+                "You are an expert writing assistant. Enhance the provided text according "
+                f"to this instruction: {instruction}. Preserve the original meaning unless "
+                "the instruction requires a stylistic change. Return only the enhanced text."
+            )
+        elif style:
+            system_prompt = (
+                "You are an expert writing assistant. Improve the provided text for clarity, "
+                f"grammar, and structure using a {style} style. Preserve the original meaning "
+                "and return only the enhanced text."
+            )
+        else:
+            system_prompt = (
+                "You are an expert writing assistant. Improve the provided text for clarity, "
+                "grammar, and structure while preserving the original meaning. Return only "
+                "the enhanced text."
+            )
     else:
         raise ValueError(f"Unsupported AI action: {action}")
 

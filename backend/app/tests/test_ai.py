@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
@@ -17,13 +18,18 @@ from app.models.ai_interaction import AIAction, AIInteraction, AIInteractionStat
 from app.models.ai_suggestion import AISuggestion, AISuggestionDecisionStatus
 
 
+TEST_PROVIDER_RESPONSES: dict[AIAction, list[str]] = {
+    AIAction.rewrite: ["Better ", "rewritten ", "content."],
+    AIAction.summarize: ["Brief ", "summary."],
+    AIAction.translate: ["Translated ", "content ", "in ", "the ", "requested ", "language."],
+    AIAction.enhance: ["Enhanced ", "content ", "with ", "better ", "clarity."],
+}
+
+
 class TestMockAIProvider:
     model_name = "test-mock-provider"
 
-    RESPONSES: dict[AIAction, list[str]] = {
-        AIAction.rewrite: ["Better ", "rewritten ", "content."],
-        AIAction.summarize: ["Brief ", "summary."],
-    }
+    RESPONSES = TEST_PROVIDER_RESPONSES
 
     async def stream_completion(
         self,
@@ -107,6 +113,30 @@ def test_build_ai_provider_requires_openai_model() -> None:
 
     with pytest.raises(RuntimeError, match="OPENAI_MODEL"):
         build_ai_provider(settings)
+
+
+@pytest.mark.parametrize(
+    ("action", "expected"),
+    [
+        (AIAction.translate, "This translated text preserves the original meaning."),
+        (AIAction.enhance, "This enhanced version improves clarity, grammar, and structure."),
+    ],
+)
+def test_mock_provider_supports_new_actions(action: AIAction, expected: str) -> None:
+    provider = MockAIProvider()
+
+    async def collect_chunks() -> list[str]:
+        return [
+            chunk
+            async for chunk in provider.stream_completion(
+                action=action,
+                system_prompt="system",
+                user_prompt="user",
+            )
+        ]
+
+    chunks = asyncio.run(collect_chunks())
+    assert "".join(chunks) == expected
 
 
 def create_document(
@@ -318,6 +348,72 @@ def test_editor_can_invoke_ai_stream(
     chunks, done_payload = parse_sse(lines)
     assert "".join(chunks) == "Brief summary."
     assert done_payload is not None
+
+
+def test_owner_can_stream_translate_and_persist_history(
+    client: TestClient,
+    db_session,
+    auth_headers: Callable[[str], dict[str, str]],
+    create_user: Callable[..., dict[str, object]],
+) -> None:
+    owner = create_user(email="owner@example.com", username="owner")
+    document = create_document(client, auth_headers(owner["access_token"]))
+
+    status_code, lines = stream_ai_request(
+        client,
+        auth_headers(owner["access_token"]),
+        document_id=document["id"],
+        action="translate",
+        selected_text="Bonjour le monde",
+        options={"target_language": "English"},
+    )
+
+    assert status_code == 200
+    chunks, done_payload = parse_sse(lines)
+    assert "".join(chunks) == "Translated content in the requested language."
+    assert done_payload is not None
+
+    interaction = db_session.get(AIInteraction, done_payload["interaction_id"])
+    assert interaction is not None
+    assert interaction.action == AIAction.translate
+    assert "English" in interaction.prompt_text
+
+    suggestion = db_session.get(AISuggestion, done_payload["suggestion_id"])
+    assert suggestion is not None
+    assert suggestion.suggested_text == "Translated content in the requested language."
+
+
+def test_owner_can_stream_enhance_and_persist_history(
+    client: TestClient,
+    db_session,
+    auth_headers: Callable[[str], dict[str, str]],
+    create_user: Callable[..., dict[str, object]],
+) -> None:
+    owner = create_user(email="owner@example.com", username="owner")
+    document = create_document(client, auth_headers(owner["access_token"]))
+
+    status_code, lines = stream_ai_request(
+        client,
+        auth_headers(owner["access_token"]),
+        document_id=document["id"],
+        action="enhance",
+        selected_text="this draft needs help",
+        options={"instruction": "Make it more persuasive"},
+    )
+
+    assert status_code == 200
+    chunks, done_payload = parse_sse(lines)
+    assert "".join(chunks) == "Enhanced content with better clarity."
+    assert done_payload is not None
+
+    interaction = db_session.get(AIInteraction, done_payload["interaction_id"])
+    assert interaction is not None
+    assert interaction.action == AIAction.enhance
+    assert "Make it more persuasive" in interaction.prompt_text
+
+    suggestion = db_session.get(AISuggestion, done_payload["suggestion_id"])
+    assert suggestion is not None
+    assert suggestion.suggested_text == "Enhanced content with better clarity."
 
 
 def test_viewer_cannot_invoke_ai(
@@ -639,6 +735,39 @@ def test_history_reflects_updated_decision_status(
     assert len(payload) == 1
     assert payload[0]["suggestion_id"] == suggestion_payload["suggestion_id"]
     assert payload[0]["decision_status"] == "accepted"
+
+
+def test_enhance_suggestion_decision_and_history_flow(
+    client: TestClient,
+    auth_headers: Callable[[str], dict[str, str]],
+    create_user: Callable[..., dict[str, object]],
+) -> None:
+    owner = create_user(email="owner@example.com", username="owner")
+    headers = auth_headers(owner["access_token"])
+    document = create_document(client, headers)
+    suggestion_payload = create_suggestion(
+        client,
+        headers,
+        document_id=document["id"],
+        action="enhance",
+        options={"style": "polished"},
+    )
+
+    decision_response = client.post(
+        f"/api/ai/suggestions/{suggestion_payload['suggestion_id']}/decision",
+        headers=headers,
+        json={"decision": "accepted"},
+    )
+    assert decision_response.status_code == 200
+
+    history_response = client.get(f"/api/ai/history/{document['id']}", headers=headers)
+    assert history_response.status_code == 200
+    payload = history_response.json()
+    assert len(payload) == 1
+    assert payload[0]["action"] == "enhance"
+    assert payload[0]["decision_status"] == "accepted"
+    assert payload[0]["suggested_text"] == "Enhanced content with better clarity."
+    assert "polished" in payload[0]["prompt_text"]
 
 
 def test_owner_can_cancel_in_progress_interaction(

@@ -37,6 +37,25 @@ class MockAIProvider(AIProvider):
             "supporting ",
             "points.",
         ],
+        AIAction.translate: [
+            "This ",
+            "translated ",
+            "text ",
+            "preserves ",
+            "the ",
+            "original ",
+            "meaning.",
+        ],
+        AIAction.enhance: [
+            "This ",
+            "enhanced ",
+            "version ",
+            "improves ",
+            "clarity, ",
+            "grammar, ",
+            "and ",
+            "structure.",
+        ],
     }
 
     async def stream_completion(

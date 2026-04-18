@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 class AIAction(str, Enum):
     rewrite = "rewrite"
     summarize = "summarize"
+    translate = "translate"
+    enhance = "enhance"
 
 
 class AIInteractionStatus(str, Enum):
