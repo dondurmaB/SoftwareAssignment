@@ -1,18 +1,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.ai.mock_provider import MockAIProvider
+from app.ai.provider import AIProvider
 from app.models.document import Document
 from app.models.document_permission import DocumentRole
 from app.models.user import User
+from app.services.ai_service import AIService
 from app.services.auth_service import AuthService
 from app.services.document_service import DocumentService
 from app.services.permission_service import PermissionService
+from app.websocket.collaboration_service import CollaborationService
+from app.websocket.connection_manager import ConnectionManager
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -27,6 +33,29 @@ def get_document_service(db: Session = Depends(get_db)) -> DocumentService:
 
 def get_permission_service(db: Session = Depends(get_db)) -> PermissionService:
     return PermissionService(db)
+
+
+def get_ai_provider() -> AIProvider:
+    return MockAIProvider()
+
+
+def get_ai_service(
+    db: Session = Depends(get_db),
+    ai_provider: AIProvider = Depends(get_ai_provider),
+) -> AIService:
+    return AIService(db=db, provider=ai_provider)
+
+
+@lru_cache
+def get_connection_manager() -> ConnectionManager:
+    return ConnectionManager()
+
+
+def get_collaboration_service(
+    document_service: DocumentService = Depends(get_document_service),
+    connection_manager: ConnectionManager = Depends(get_connection_manager),
+) -> CollaborationService:
+    return CollaborationService(document_service=document_service, connection_manager=connection_manager)
 
 
 def get_current_user(

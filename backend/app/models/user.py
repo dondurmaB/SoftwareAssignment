@@ -10,6 +10,7 @@ from app.core.database import Base
 from app.core.security import utc_now
 
 if TYPE_CHECKING:
+    from app.models.ai_interaction import AIInteraction
     from app.models.refresh_token import RefreshToken
 
 
@@ -23,6 +24,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(), default=utc_now, nullable=False)
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    ai_interactions: Mapped[list["AIInteraction"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
