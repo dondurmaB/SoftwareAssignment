@@ -10,6 +10,7 @@ from app.core.database import Base
 from app.core.security import utc_now
 
 if TYPE_CHECKING:
+    from app.models.ai_interaction import AIInteraction
     from app.models.document_permission import DocumentPermission
     from app.models.document_version import DocumentVersion
 
@@ -32,4 +33,9 @@ class Document(Base):
         back_populates="document",
         cascade="all, delete-orphan",
         order_by="DocumentVersion.version_number",
+    )
+    ai_interactions: Mapped[list["AIInteraction"]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        order_by="AIInteraction.created_at",
     )
