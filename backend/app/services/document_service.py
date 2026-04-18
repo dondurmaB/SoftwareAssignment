@@ -109,6 +109,14 @@ class DocumentService:
         self.db.refresh(document)
         return document
 
+    def update_live_content(self, document: Document, content: str) -> Document:
+        document.current_content = content
+        document.updated_at = utc_now()
+        self.db.add(document)
+        self._commit_or_rollback()
+        self.db.refresh(document)
+        return document
+
     def delete_document(self, document: Document) -> None:
         self.db.delete(document)
         self._commit_or_rollback()
