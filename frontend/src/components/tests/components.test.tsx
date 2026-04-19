@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   authApi: {
     login: vi.fn(),
     register: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock('../api', () => ({
   getValidToken: vi.fn().mockResolvedValue('mock-token'),
 }))
 
-vi.mock('../api/client', () => ({
+vi.mock('../../api/client', () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -43,28 +43,28 @@ vi.mock('../api/client', () => ({
   },
 }))
 
-vi.mock('../hooks/useCollaboration', () => ({
+vi.mock('../../hooks/useCollaboration', () => ({
   useCollaboration: () => ({ connected: false, sendEdit: vi.fn() }),
 }))
 
-vi.mock('../hooks/useAIStream', () => ({
+vi.mock('../../hooks/useAIStream', () => ({
   useAIStream: () => ({
     streaming: false, streamedText: '', interactionId: null, suggestionId: null,
     error: null, startStream: vi.fn(), cancelStream: vi.fn(), reset: vi.fn(),
   }),
 }))
 
-vi.mock('../hooks/useAutoSave', () => ({
+vi.mock('../../hooks/useAutoSave', () => ({
   useAutoSave: vi.fn(),
 }))
 
-import { authApi, documentApi } from '../api'
-import LoginPage from '../pages/LoginPage'
-import RegisterPage from '../pages/RegisterPage'
-import DashboardPage from '../pages/DashboardPage'
-import SaveStatusBar from '../components/editor/SaveStatusBar'
-import PresenceBar from '../components/editor/PresenceBar'
-import { useAuthStore } from '../store/authStore'
+import { authApi, documentApi } from '../../api'
+import LoginPage from '../../pages/LoginPage'
+import RegisterPage from '../../pages/RegisterPage'
+import DashboardPage from '../../pages/DashboardPage'
+import SaveStatusBar from '../editor/SaveStatusBar'
+import PresenceBar from '../editor/PresenceBar'
+import { useAuthStore } from '../../store/authStore'
 
 const Wrapper = ({ children }: { children: React.ReactNode }) => (
   <BrowserRouter>
