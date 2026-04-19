@@ -1,30 +1,29 @@
 import { useState, useRef, useCallback } from 'react'
-import { buildApiUrl } from '../api'
-import type { AIFeature } from '../types'
+import type { AIAction } from '../types'
+import { getValidToken } from '../api'
+import { buildApiUrl } from '../api/client'
+
+interface AIStreamDonePayload {
+  interaction_id: number
+  suggestion_id: number
+}
+
+interface AICanceledPayload {
+  interaction_id: number
+}
 
 interface StreamOptions {
-  documentId: string
-  feature: AIFeature
+  documentId: number
+  action: AIAction
   selectedText: string
   options?: Record<string, string>
 }
 
-interface UseAIStreamReturn {
-  streaming: boolean
-  streamedText: string
-  interactionId: string | null
-  suggestionId: string | null
-  error: string | null
-  startStream: (opts: StreamOptions) => void
-  cancelStream: () => void
-  reset: () => void
-}
-
-export function useAIStream(): UseAIStreamReturn {
+export function useAIStream() {
   const [streaming, setStreaming] = useState(false)
   const [streamedText, setStreamedText] = useState('')
-  const [interactionId, setInteractionId] = useState<string | null>(null)
-  const [suggestionId, setSuggestionId] = useState<string | null>(null)
+  const [interactionId, setInteractionId] = useState<number | null>(null)
+  const [suggestionId, setSuggestionId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -48,7 +47,7 @@ export function useAIStream(): UseAIStreamReturn {
 
     const controller = new AbortController()
     abortRef.current = controller
-    const token = localStorage.getItem('access_token')
+    const token = await getValidToken()
 
     if (!token) {
       setError('Sign in before using the AI assistant.')
@@ -66,7 +65,7 @@ export function useAIStream(): UseAIStreamReturn {
         },
         body: JSON.stringify({
           document_id: opts.documentId,
-          feature: opts.feature,
+          action: opts.action,
           selected_text: opts.selectedText,
           options: opts.options ?? {},
         }),
@@ -91,37 +90,78 @@ export function useAIStream(): UseAIStreamReturn {
       let buffer = ''
       let accumulated = ''
 
+      const handleEventBlock = (rawBlock: string) => {
+        const lines = rawBlock.replace(/\r/g, '').split('\n').filter(Boolean)
+        if (lines.length === 0) return
+
+        let eventType = 'message'
+        const dataLines: string[] = []
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim()
+            continue
+          }
+          if (line.startsWith('data: ')) {
+            dataLines.push(line.slice(6))
+            continue
+          }
+          if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5))
+          }
+        }
+
+        const data = dataLines.join('\n')
+        if (!data) return
+
+        switch (eventType) {
+          case 'done': {
+            try {
+              const payload = JSON.parse(data) as AIStreamDonePayload
+              setInteractionId(payload.interaction_id)
+              setSuggestionId(payload.suggestion_id)
+            } catch {
+              setError('AI stream finished with an invalid completion payload.')
+            }
+            break
+          }
+          case 'error':
+            setError(data)
+            break
+          case 'canceled': {
+            try {
+              const payload = JSON.parse(data) as AICanceledPayload
+              setInteractionId(payload.interaction_id)
+            } catch {
+              // Ignore malformed cancel payloads and fall back to a generic message.
+            }
+            setError('AI generation was canceled.')
+            break
+          }
+          default:
+            accumulated += data
+            setStreamedText(accumulated)
+        }
+      }
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
 
-        for (const line of lines) {
-          if (line.startsWith('event: error')) continue
-          if (line.startsWith('event: done')) continue
-          if (line.startsWith('data: ')) {
-            const raw = line.slice(6)
-            // Check if this is the final done payload
-            if (raw.startsWith('{') && raw.includes('interaction_id')) {
-              try {
-                const payload = JSON.parse(raw)
-                setInteractionId(payload.interaction_id)
-                setSuggestionId(payload.suggestion_id)
-              } catch {}
-            } else {
-              accumulated += raw
-              setStreamedText(accumulated)
-            }
-          }
+        let boundary = buffer.indexOf('\n\n')
+        while (boundary !== -1) {
+          handleEventBlock(buffer.slice(0, boundary))
+          buffer = buffer.slice(boundary + 2)
+          boundary = buffer.indexOf('\n\n')
         }
       }
+
+      buffer += decoder.decode()
+      if (buffer.trim()) handleEventBlock(buffer)
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setError(err.message ?? 'Stream failed')
-      }
+      if (err.name !== 'AbortError') setError(err.message ?? 'Stream failed')
     } finally {
       abortRef.current = null
       setStreaming(false)
