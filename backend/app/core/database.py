@@ -4,17 +4,21 @@ import sqlite3
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, event
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 
 settings = get_settings()
 
 connect_args: dict[str, object] = {}
+engine_kwargs: dict[str, object] = {}
 if settings.DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+    engine_kwargs["poolclass"] = NullPool
 
-engine = create_engine(settings.DATABASE_URL, connect_args=connect_args)
+engine = create_engine(settings.DATABASE_URL, connect_args=connect_args, **engine_kwargs)
 
 if settings.DATABASE_URL.startswith("sqlite"):
     @event.listens_for(engine, "connect")
@@ -42,4 +46,8 @@ def get_db() -> Generator[Session, None, None]:
     try:
         yield db
     finally:
-        db.close()
+        try:
+            db.close()
+        except ProgrammingError:
+            # WebSocket test teardown can race with an already-closed SQLite handle.
+            pass

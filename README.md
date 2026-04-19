@@ -4,7 +4,7 @@ This repository started as an Assignment 1 proof of concept and is now being ext
 
 ## Current Progress
 
-- `frontend/` still contains the original React PoC client plus partial feature scaffolding; end-to-end AI integration is not complete yet
+- `frontend/` now contains the active React client with auth, document dashboard/editor flows, WebSocket collaboration baseline, and backend-backed AI integration
 - `backend/src/` is the legacy PoC FastAPI backend kept only for reference
 - `backend/app/` contains the new implementation track for the final backend architecture
 - Backend Milestone 1 is complete in `backend/app/`: authentication and session management
@@ -126,7 +126,7 @@ Included in this milestone:
 - Mock is the default for local development and testing, and tests continue to use the mock provider override without making real external API calls.
 - `OPENAI_API_KEY` and `OPENAI_MODEL` are only required when `AI_PROVIDER=openai`.
 - AI interactions and suggestions are persisted in the backend, including decision status and canceled interaction status.
-- Real provider support exists in the backend, but frontend AI integration is still incomplete.
+- Real provider support exists in the backend, and the merged frontend now consumes the active AI backend endpoints.
 - Partial acceptance and automatic application of AI suggestion text into the document are not implemented yet.
 
 ## What This PoC Demonstrates
@@ -135,8 +135,9 @@ Included in this milestone:
 - React + Vite + TypeScript frontend
 - Python FastAPI backend
 - Explicit DTO contracts shared through documentation and mirrored in code
-- Working document creation, loading, and saving flow
+- Working auth, document creation/loading/editing, and dashboard/editor flows
 - Active backend milestones for auth, documents/permissions, version restore, WebSocket collaboration, and AI streaming foundation
+- Frontend integration for AI streaming, history, and suggestion decisions against the active backend
 
 ## Intentionally Not Implemented Yet
 
@@ -145,7 +146,7 @@ Included in this milestone:
 - Offline edit queueing
 - Additional AI actions beyond the current `rewrite`, `summarize`, `translate`, and `enhance` set
 - Additional AI providers beyond the mock/OpenAI-backed backend support
-- Frontend end-to-end AI suggestion workflow
+- Mid-stream AI cancel UI
 - Partial acceptance / direct application of AI suggestions into document content
 
 These features remain in progress for the final assignment implementation.
@@ -298,7 +299,7 @@ Then open the frontend URL shown by Vite, typically `http://localhost:5173`.
 
 This repository currently validates:
 
-- the original frontend-backend PoC flow
+- the merged frontend auth/dashboard/editor flow
 - the new backend authentication foundation for the final architecture
 - the new backend document management and access-control foundation
 - backend version restore and versioning completion
@@ -306,5 +307,6 @@ This repository currently validates:
 - backend AI streaming foundation with persisted history, decision tracking, and the current `rewrite` / `summarize` / `translate` / `enhance` action set
 - backend AI interaction cancellation behavior
 - backend AI provider selection with mock default and optional OpenAI-backed provider support
+- frontend integration for AI streaming, history, and accept/reject decision flow
 
-Richer frontend AI integration and more advanced collaboration behavior are the next milestones.
+More advanced collaboration behavior and AI UX polish are the next milestones.
