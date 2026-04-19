@@ -4,7 +4,6 @@ import { getValidToken } from '../api'
 
 interface UseCollaborationOptions {
   docId: number
-  onSessionSync: (content: string) => void
   onRemoteEdit: (content: string, userId: number) => void
   onPresenceChange: (users: ActiveUser[]) => void
   enabled: boolean
@@ -12,7 +11,6 @@ interface UseCollaborationOptions {
 
 export function useCollaboration({
   docId,
-  onSessionSync,
   onRemoteEdit,
   onPresenceChange,
   enabled,
@@ -51,7 +49,6 @@ export function useCollaboration({
         case 'session_joined':
           setConnected(true)
           attemptsRef.current = 0
-          onSessionSync(msg.content)
           onPresenceChange(msg.active_users)
           break
         case 'document_update':
@@ -81,7 +78,7 @@ export function useCollaboration({
     }
 
     ws.onerror = () => ws.close()
-  }, [docId, enabled, onRemoteEdit, onPresenceChange, onSessionSync])
+  }, [docId, enabled, onRemoteEdit, onPresenceChange])
 
   useEffect(() => {
     mountedRef.current = true

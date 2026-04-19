@@ -38,10 +38,5 @@ export function useAutoSave(docId: number | undefined, content: string, delay = 
     return () => clearTimeout(timerRef.current)
   }, [content, docId, delay, updateContent, setSaveStatus])
 
-  const hasPendingLocalChanges = useCallback(() => {
-    if (lastSavedRef.current === null) return false
-    return content !== lastSavedRef.current
-  }, [content])
-
-  return { syncSavedContent, hasPendingLocalChanges }
+  return { syncSavedContent }
 }

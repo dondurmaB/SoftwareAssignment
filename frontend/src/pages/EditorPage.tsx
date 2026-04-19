@@ -25,10 +25,6 @@ import toast from 'react-hot-toast'
 import { ArrowLeft, Share2, Clock, Bot, History, Loader2, Edit2, Check, X, Save } from 'lucide-react'
 
 type RightPanel = 'none' | 'ai' | 'versions'
-type DeferredRemoteSync = {
-  content: string
-  source: 'reconnect' | 'live_update'
-}
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>()
@@ -54,12 +50,10 @@ export default function EditorPage() {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const [editorContent, setEditorContent] = useState('')
-  const [deferredRemoteSync, setDeferredRemoteSync] = useState<DeferredRemoteSync | null>(null)
 
   const remoteEditRef = useRef(false)
   const isInitialLoadRef = useRef(true)
   const broadcastTimerRef = useRef<ReturnType<typeof setTimeout>>()
-  const deferredRemoteRef = useRef<DeferredRemoteSync | null>(null)
 
   const syncCurrentDocumentContent = useCallback((content: string) => {
     if (!currentDoc) return
@@ -67,12 +61,7 @@ export default function EditorPage() {
   }, [currentDoc, setCurrentDoc])
 
   // Auto-save
-  const { syncSavedContent, hasPendingLocalChanges } = useAutoSave(docId, editorContent)
-
-  const updateDeferredRemoteSync = useCallback((next: DeferredRemoteSync | null) => {
-    deferredRemoteRef.current = next
-    setDeferredRemoteSync(next)
-  }, [])
+  const { syncSavedContent } = useAutoSave(docId, editorContent)
 
   const persistProgrammaticContent = useCallback(async (
     nextContent: string,
@@ -113,7 +102,6 @@ export default function EditorPage() {
   useEffect(() => {
     if (!docId) return
     isInitialLoadRef.current = true
-    updateDeferredRemoteSync(null)
     fetchDocument(docId)
       .then(doc => {
         setEditorContent(doc.current_content)
@@ -122,7 +110,7 @@ export default function EditorPage() {
       })
       .catch(() => { toast.error('Document not found'); navigate('/dashboard') })
       .finally(() => setLoading(false))
-  }, [docId, fetchDocument, navigate, syncSavedContent, updateDeferredRemoteSync])
+  }, [docId, fetchDocument, navigate, syncSavedContent])
 
   const canEdit = currentDoc?.role === 'owner' || currentDoc?.role === 'editor'
 
@@ -158,7 +146,8 @@ export default function EditorPage() {
   useEffect(() => { if (editor) editor.setEditable(canEdit) }, [editor, canEdit])
 
   // Real-time collaboration
-  const applyRemoteContent = useCallback((content: string) => {
+  const handleRemoteEdit = useCallback((content: string, userId: number) => {
+    if (userId === user?.id) return
     if (!editor) return
     remoteEditRef.current = true
     const { from, to } = editor.state.selection
@@ -169,58 +158,7 @@ export default function EditorPage() {
     syncCurrentDocumentContent(content)
     syncSavedContent(content)
     setSaveStatus('saved')
-    updateDeferredRemoteSync(null)
-  }, [editor, setSaveStatus, syncCurrentDocumentContent, syncSavedContent, updateDeferredRemoteSync])
-
-  const deferRemoteContent = useCallback((content: string, source: DeferredRemoteSync['source']) => {
-    if (deferredRemoteRef.current?.content === content) return
-
-    updateDeferredRemoteSync({ content, source })
-    toast(
-      source === 'reconnect'
-        ? 'Reconnected while you have unsaved local changes. Remote content was deferred to protect your draft.'
-        : 'Remote update deferred because you have unsaved local changes.',
-      { icon: '⚠️' },
-    )
-  }, [updateDeferredRemoteSync])
-
-  const handleIncomingRemoteContent = useCallback((content: string, source: DeferredRemoteSync['source']) => {
-    if (!editor) return
-    if (content === editorContent) {
-      syncCurrentDocumentContent(content)
-      syncSavedContent(content)
-      setSaveStatus('saved')
-      updateDeferredRemoteSync(null)
-      return
-    }
-
-    if (canEdit && hasPendingLocalChanges()) {
-      deferRemoteContent(content, source)
-      return
-    }
-
-    applyRemoteContent(content)
-  }, [
-    applyRemoteContent,
-    canEdit,
-    deferRemoteContent,
-    editor,
-    editorContent,
-    hasPendingLocalChanges,
-    setSaveStatus,
-    syncCurrentDocumentContent,
-    syncSavedContent,
-    updateDeferredRemoteSync,
-  ])
-
-  const handleRemoteEdit = useCallback((content: string, userId: number) => {
-    if (userId === user?.id) return
-    handleIncomingRemoteContent(content, 'live_update')
-  }, [handleIncomingRemoteContent, user?.id])
-
-  const handleSessionSync = useCallback((content: string) => {
-    handleIncomingRemoteContent(content, 'reconnect')
-  }, [handleIncomingRemoteContent])
+  }, [editor, setSaveStatus, syncCurrentDocumentContent, syncSavedContent, user?.id])
 
   const handlePresenceChange = useCallback((users: ActiveUser[]) => {
     setPresence(users)
@@ -228,7 +166,6 @@ export default function EditorPage() {
 
   const { connected, sendEdit } = useCollaboration({
     docId: docId ?? 0,
-    onSessionSync: handleSessionSync,
     onRemoteEdit: handleRemoteEdit,
     onPresenceChange: handlePresenceChange,
     enabled: !loading && !!docId,
@@ -338,44 +275,6 @@ export default function EditorPage() {
       {/* Body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {deferredRemoteSync && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-                padding: '10px 16px',
-                background: '#fff7ed',
-                borderBottom: '1px solid #fed7aa',
-                color: '#9a3412',
-                fontSize: 13,
-                flexShrink: 0,
-              }}
-            >
-              <span>
-                Local unsynced changes were kept. {deferredRemoteSync.source === 'reconnect' ? 'Server sync after reconnect' : 'A remote edit'} was deferred to avoid overwriting your draft.
-              </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => updateDeferredRemoteSync(null)}
-                  style={{ color: '#9a3412' }}
-                >
-                  Keep local draft
-                </button>
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    applyRemoteContent(deferredRemoteSync.content)
-                    toast.success('Loaded deferred remote content')
-                  }}
-                >
-                  Load remote content
-                </button>
-              </div>
-            </div>
-          )}
           <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
             <div style={{ maxWidth: 820, width: '100%', margin: '0 auto', background: 'var(--surface)', minHeight: '100%', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column' }}>
               <EditorToolbar editor={canEdit ? editor : null} />
