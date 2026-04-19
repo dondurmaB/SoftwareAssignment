@@ -93,6 +93,11 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
       </div>
 
       <div style={styles.body}>
+        <div style={styles.warningBox}>
+          <strong>Stabilized placeholder.</strong> This panel preserves the frontend flow for now, but full AI
+          integration still depends on the backend contract and editor wiring.
+        </div>
+
         {!canEdit && (
           <div style={styles.warningBox}>
             Viewers cannot use the AI assistant.
