@@ -9,6 +9,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -e
 
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BACKEND_DIR="$ROOT_DIR/backend"
+FRONTEND_DIR="$ROOT_DIR/frontend"
+BACKEND_VENV_DIR="$BACKEND_DIR/.venv"
+BACKEND_PYTHON="$BACKEND_VENV_DIR/bin/python"
+BACKEND_PIP="$BACKEND_VENV_DIR/bin/pip"
+
 INSTALL=false; BACKEND_ONLY=false; FRONTEND_ONLY=false
 for arg in "$@"; do
   case $arg in --install) INSTALL=true;; --backend-only) BACKEND_ONLY=true;; --frontend-only) FRONTEND_ONLY=true;; esac
@@ -25,38 +32,56 @@ command -v node >/dev/null 2>&1 || error "node required"
 command -v npm >/dev/null 2>&1 || error "npm required"
 
 # Set up backend .env if missing
-if [ ! -f "backend/.env" ]; then
+if [ ! -f "$BACKEND_DIR/.env" ]; then
   warn "No backend/.env found — copying from .env.example"
-  cp backend/.env.example backend/.env
-  warn "Edit backend/.env and set AI_PROVIDER=mock (or openai + OPENAI_API_KEY)"
+  cp "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
+  warn "Edit backend/.env if you want openai or lmstudio. The default AI provider is mock."
 fi
 
 # Install deps
 if [ "$INSTALL" = true ]; then
+  if [ ! -x "$BACKEND_PYTHON" ]; then
+    info "Creating backend virtual environment…"
+    python3 -m venv "$BACKEND_VENV_DIR"
+  fi
   info "Installing backend deps…"
-  cd backend && pip install -r requirements.txt -q && cd ..
+  "$BACKEND_PIP" install -r "$BACKEND_DIR/requirements.txt" -q
   success "Backend deps installed"
   info "Installing frontend deps…"
-  cd frontend && npm install --silent && cd ..
+  (cd "$FRONTEND_DIR" && npm install --silent)
   success "Frontend deps installed"
 fi
 
+if [ ! -x "$BACKEND_PYTHON" ]; then
+  error "Backend virtualenv not found. Run: ./run.sh --install"
+fi
+
 # Check deps
-python3 -c "import fastapi" 2>/dev/null || error "FastAPI not found. Run: ./run.sh --install"
+"$BACKEND_PYTHON" -c "import fastapi" 2>/dev/null || error "FastAPI not found in backend/.venv. Run: ./run.sh --install"
 
 cleanup() { info "Shutting down…"; kill $BACKEND_PID 2>/dev/null || true; kill $FRONTEND_PID 2>/dev/null || true; exit 0; }
 trap cleanup SIGINT SIGTERM
 
 if [ "$FRONTEND_ONLY" != true ]; then
   info "Starting backend on http://localhost:8000 …"
-  cd backend && python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &
-  BACKEND_PID=$!; cd ..; sleep 2; success "Backend running (PID $BACKEND_PID)"
+  (
+    cd "$BACKEND_DIR"
+    "$BACKEND_PYTHON" -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+  ) &
+  BACKEND_PID=$!
+  sleep 2
+  success "Backend running (PID $BACKEND_PID)"
 fi
 
 if [ "$BACKEND_ONLY" != true ]; then
   info "Starting frontend on http://localhost:5173 …"
-  cd frontend && npm run dev &
-  FRONTEND_PID=$!; cd ..; sleep 2; success "Frontend running (PID $FRONTEND_PID)"
+  (
+    cd "$FRONTEND_DIR"
+    npm run dev
+  ) &
+  FRONTEND_PID=$!
+  sleep 2
+  success "Frontend running (PID $FRONTEND_PID)"
 fi
 
 echo ""

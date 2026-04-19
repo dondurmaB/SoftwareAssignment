@@ -38,6 +38,7 @@ export function useAIStream() {
   const cancelStream = useCallback(() => {
     abortRef.current?.abort()
     abortRef.current = null
+    setError('AI generation was canceled.')
     setStreaming(false)
   }, [])
 
@@ -161,7 +162,11 @@ export function useAIStream() {
       buffer += decoder.decode()
       if (buffer.trim()) handleEventBlock(buffer)
     } catch (err: any) {
-      if (err.name !== 'AbortError') setError(err.message ?? 'Stream failed')
+      if (err.name === 'AbortError') {
+        setError('AI generation was canceled.')
+      } else {
+        setError(err.message ?? 'Stream failed')
+      }
     } finally {
       abortRef.current = null
       setStreaming(false)

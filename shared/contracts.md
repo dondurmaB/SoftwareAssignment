@@ -62,9 +62,10 @@ The active frontend/backend contract uses snake_case document fields, including:
 
 Document versioning notes:
 
-- the backend keeps an initial snapshot plus checkpoint-style content versions
-- content autosaves do not create a new version on every tiny update
-- restoring an older version updates the current document content without appending a new version row
+- document creation creates version 1
+- manual save and AI apply create new version entries
+- autosave and live WebSocket typing update `current_content` without creating a new version on every tiny update
+- restoring an older version creates a new version entry and records `restored_from_version_number`
 
 ### Collaboration
 
@@ -77,8 +78,17 @@ Document versioning notes:
 - `POST /api/ai/suggestions/{suggestion_id}/decision`
 - `POST /api/ai/interactions/{interaction_id}/cancel`
 
+AI provider notes:
+
+- `AI_PROVIDER` supports `mock`, `openai`, and `lmstudio`
+- `mock` is the default local/test provider
+- `openai` requires `OPENAI_API_KEY` and `OPENAI_MODEL`
+- `lmstudio` requires `LMSTUDIO_MODEL`; `LMSTUDIO_BASE_URL` defaults to `http://localhost:1234/v1`
+
 ## Notes
 
 - The backend is the source of truth for request/response shapes.
 - Frontend AI integration is now wired to the active backend routes.
+- Collaboration remains a baseline last-write-wins WebSocket implementation without CRDT/OT, offline merge/replay, or remote cursors.
+- There is no document export/download endpoint in the current implementation.
 - Partial acceptance and richer collaboration behavior are still intentionally out of scope.

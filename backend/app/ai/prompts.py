@@ -25,10 +25,19 @@ def build_prompt_set(action: AIAction, selected_text: str, options: dict[str, st
         )
     elif action == AIAction.summarize:
         length = options.get("length", "medium")
+        length_targets = {
+            "short": "Use 1 sentence when possible and keep it under 35 words.",
+            "medium": "Use no more than 2 short sentences and keep it under 60 words.",
+            "long": "Use no more than 3 concise sentences and keep it under 100 words.",
+        }
+        length_instruction = length_targets.get(
+            length,
+            "Use no more than 2 short sentences and keep it under 60 words.",
+        )
         system_prompt = (
-            "You are a concise summarizer. Summarize the provided text and preserve "
-            f"the important ideas. Target summary length: {length}. "
-            "Return only the summary."
+            "You are an aggressive summarizer. Compress the provided text to only its core point or points. "
+            "Remove repetition, filler, examples, background detail, and softening language. "
+            f"{length_instruction} Return only the summary text."
         )
     elif action == AIAction.translate:
         target_language = options.get("target_language", "English")

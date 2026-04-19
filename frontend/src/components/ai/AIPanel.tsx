@@ -34,7 +34,7 @@ export default function AIPanel({ editor, docId, onClose, canEdit, onContentAppl
   const [phase, setPhase] = useState<'configure' | 'result'>('configure')
   const previousContentRef = useRef<string>('')
 
-  const { streaming, streamedText, suggestionId, error, startStream, reset } = useAIStream()
+  const { streaming, streamedText, suggestionId, error, startStream, cancelStream, reset } = useAIStream()
 
   const getSelectedText = () => {
     if (!editor) return ''
@@ -175,7 +175,7 @@ export default function AIPanel({ editor, docId, onClose, canEdit, onContentAppl
               <div className="form-group">
                 <label>Target language</label>
                 <select className="input" value={targetLang} onChange={e => setTargetLang(e.target.value)}>
-                  {['French', 'Spanish', 'German', 'Italian', 'Portuguese', 'Arabic', 'Chinese', 'Japanese', 'Korean', 'Russian'].map(language => (
+                  {['English', 'French', 'Spanish', 'German', 'Italian', 'Portuguese', 'Arabic', 'Chinese', 'Japanese', 'Korean', 'Russian'].map(language => (
                     <option key={language} value={language}>{language}</option>
                   ))}
                 </select>
@@ -226,8 +226,13 @@ export default function AIPanel({ editor, docId, onClose, canEdit, onContentAppl
               )}
 
               {streaming && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                  <Loader2 size={12} className="spinner" /> Generating…
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                    <Loader2 size={12} className="spinner" /> Generating…
+                  </div>
+                  <button className="btn btn-secondary btn-sm" onClick={cancelStream}>
+                    <X size={13} /> Cancel generation
+                  </button>
                 </div>
               )}
             </div>
