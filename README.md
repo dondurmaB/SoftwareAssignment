@@ -75,6 +75,8 @@ Included in this follow-up:
 - Autosave and live collaboration updates that keep `current_content` fresh without creating a new version on every tiny change
 - SQLite foreign key enforcement for stronger delete cascade safety
 
+In other words: autosave keeps the live document content up to date, while explicit checkpoints are created only on document creation, manual save, AI apply, and restore.
+
 ## Backend Milestone 3: WebSocket Collaboration Baseline
 
 Implemented in `backend/app/`:
@@ -169,14 +171,8 @@ root/
 
 ## Shared Contracts
 
-The API contracts are documented in `shared/contracts.md`.
-
-Implemented DTOs:
-
-- `Role`: `owner | editor | viewer`
-- `DocumentDto`
-- `CreateDocumentRequest`
-- `UpdateDocumentRequest`
+The active frontend/backend contract is documented in `shared/contracts.md`.
+That file should be treated as the high-level contract reference for the final merged application.
 
 ## Backend Setup
 
@@ -219,7 +215,16 @@ Optional one-command startup:
 ./run.sh --install
 ```
 
-This creates `backend/.venv` if needed, installs backend/frontend dependencies, copies `backend/.env` from `.env.example` if missing, and starts both services.
+`./run.sh --install` is intended for local development/demo use. It:
+
+- creates `backend/.venv` if it does not already exist
+- installs backend dependencies into `backend/.venv`
+- installs frontend dependencies in `frontend/`
+- copies `backend/.env` from `backend/.env.example` if it is missing
+- starts the backend on port `8000`
+- starts the frontend on port `5173`
+
+After that first run, you can use `./run.sh`, `./run.sh --backend-only`, or `./run.sh --frontend-only` as needed.
 
 5. Run the active FastAPI backend with uvicorn:
 
@@ -302,14 +307,21 @@ npm run dev
 
 Then open the frontend URL shown by Vite, typically `http://localhost:5173`.
 
-## Example API Flow
+## Example User Flow
 
-1. Create document:
-   Enter a title and content in the frontend, then click `Create Document`.
-2. Load document:
-   Paste or keep the returned document ID and click `Load Document`.
-3. Save document:
-   Update the content and click `Save Document`.
+1. Register or log in from the frontend auth pages.
+2. Create a new document from the dashboard.
+3. Open the document in the editor.
+4. Type in the editor:
+   autosave and live collaboration update `current_content`, but they do not create a new version entry on every small edit.
+5. Click `Save version` when you want a checkpoint:
+   this creates a new version entry in history.
+6. Open the AI panel and run one of the supported actions:
+   `rewrite`, `summarize`, `translate`, or `enhance`.
+7. Accept or reject the AI suggestion:
+   rejecting keeps the document unchanged, while accepting applies the text and creates a new version checkpoint.
+8. Open version history to inspect saved checkpoints and restore an older version if needed.
+9. Share the document with another user as `editor` or `viewer` and confirm baseline WebSocket collaboration works in the editor.
 
 ## Validation Goal
 
