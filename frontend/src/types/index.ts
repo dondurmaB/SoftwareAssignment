@@ -45,7 +45,6 @@ export interface DocumentRestoreResponse {
   title: string
   current_content: string
   updated_at: string
-  new_version_number: number
 }
 
 // ── Permissions ───────────────────────────────────────────────────────────────

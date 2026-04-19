@@ -15,14 +15,21 @@ from app.models.ai_interaction import AIAction
 class OpenAIProvider(AIProvider):
     """Real AI provider backed by the OpenAI Python SDK."""
 
-    def __init__(self, *, api_key: str, model_name: str) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model_name: str,
+        base_url: str | None = None,
+        provider_name: str = "openai",
+    ) -> None:
         if AsyncOpenAI is None:
             raise RuntimeError(
-                "AI_PROVIDER=openai requires the 'openai' package to be installed."
+                f"AI_PROVIDER={provider_name} requires the 'openai' package to be installed."
             )
 
         self.model_name = model_name
-        self._client = AsyncOpenAI(api_key=api_key)
+        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     async def stream_completion(
         self,

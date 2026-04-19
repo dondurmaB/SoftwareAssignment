@@ -14,11 +14,19 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const normalizedEmail = email.trim()
+    const normalizedUsername = username.trim()
+
     if (password.length < 8) { toast.error('Password must be at least 8 characters'); return }
-    if (username.length < 3) { toast.error('Username must be at least 3 characters'); return }
+    if (normalizedUsername.length < 3) { toast.error('Username must be at least 3 characters'); return }
+    if (!/^[A-Za-z0-9_.-]+$/.test(normalizedUsername)) {
+      toast.error('Username can only contain letters, numbers, _, ., and -')
+      return
+    }
+
     setLoading(true)
     try {
-      await register(email, username, password)
+      await register(normalizedEmail, normalizedUsername, password)
       toast.success('Account created!')
       navigate('/dashboard')
     } catch (err: any) {
@@ -45,7 +53,16 @@ export default function RegisterPage() {
           </div>
           <div className="form-group">
             <label>Username <span style={{ color: 'var(--text-light)', fontWeight: 400 }}>(letters, numbers, _ . -)</span></label>
-            <input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="your_username" required minLength={3} />
+            <input
+              className="input"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              placeholder="your_username"
+              required
+              minLength={3}
+              maxLength={50}
+              pattern="^[A-Za-z0-9_.-]+$"
+            />
           </div>
           <div className="form-group">
             <label>Password <span style={{ color: 'var(--text-light)', fontWeight: 400 }}>(min. 8 chars)</span></label>

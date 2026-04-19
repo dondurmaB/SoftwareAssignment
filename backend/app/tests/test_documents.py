@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+import app.services.document_service as document_service_module
 from app.models.document_permission import DocumentPermission
 from app.models.document_version import DocumentVersion
 
@@ -553,7 +555,7 @@ def test_restore_updates_document_content_correctly(
     assert document_response.json()["current_content"] == "draft"
 
 
-def test_restore_creates_new_version_snapshot(
+def test_restore_does_not_create_new_version_snapshot(
     client: TestClient,
     create_user: Callable[..., dict[str, object]],
     auth_headers: Callable[[str], dict[str, str]],
@@ -576,13 +578,17 @@ def test_restore_creates_new_version_snapshot(
     versions_after_restore = client.get(f"/api/documents/{document['id']}/versions", headers=headers)
     assert versions_after_restore.status_code == 200
     payload = versions_after_restore.json()
-    assert len(payload) == 4
-    assert payload[0]["version_number"] == 4
-    assert payload[0]["is_current"] is True
+    assert len(payload) == 2
+    assert [version["version_number"] for version in payload] == [2, 1]
+    assert payload[0]["is_current"] is False
+    restored_version = next(version for version in payload if version["version_number"] == 1)
+    assert restored_version["is_current"] is True
 
 
-def test_restore_version_numbers_increment_correctly(
+def test_checkpoint_window_coalesces_rapid_updates_into_latest_version(
     client: TestClient,
+    db_session,
+    monkeypatch,
     create_user: Callable[..., dict[str, object]],
     auth_headers: Callable[[str], dict[str, str]],
 ) -> None:
@@ -590,18 +596,36 @@ def test_restore_version_numbers_increment_correctly(
     headers = auth_headers(owner["access_token"])
     document = create_document(client, headers, content="base")
 
+    checkpoint_times = iter(
+        [
+            datetime(2099, 1, 1, 12, 0, 0),
+            datetime(2099, 1, 1, 12, 0, 10),
+            datetime(2099, 1, 1, 12, 0, 20),
+        ]
+    )
+    monkeypatch.setattr(document_service_module, "utc_now", lambda: next(checkpoint_times))
+
     client.put(f"/api/documents/{document['id']}", json={"content": "v1"}, headers=headers)
     client.put(f"/api/documents/{document['id']}", json={"content": "v2"}, headers=headers)
-    versions = client.get(f"/api/documents/{document['id']}/versions", headers=headers).json()
-    version_to_restore = next(version for version in versions if version["version_number"] == 1)
+    client.put(f"/api/documents/{document['id']}", json={"content": "v3"}, headers=headers)
 
-    restore_response = client.post(
-        f"/api/documents/{document['id']}/versions/{version_to_restore['id']}/restore",
-        headers=headers,
+    versions_response = client.get(f"/api/documents/{document['id']}/versions", headers=headers)
+    assert versions_response.status_code == 200
+    payload = versions_response.json()
+
+    assert len(payload) == 2
+    assert [version["version_number"] for version in payload] == [2, 1]
+    assert payload[0]["is_current"] is True
+
+    latest_version = db_session.scalar(
+        select(DocumentVersion).where(
+            DocumentVersion.document_id == document["id"],
+            DocumentVersion.version_number == 2,
+        )
     )
-
-    assert restore_response.status_code == 200
-    assert restore_response.json()["new_version_number"] == 4
+    assert latest_version is not None
+    assert latest_version.content_snapshot == "v3"
+    assert latest_version.created_at == datetime(2099, 1, 1, 12, 0, 20)
 
 
 def test_editor_cannot_restore(
@@ -722,7 +746,6 @@ def test_get_versions_shows_correct_order_and_latest_version(
     assert versions_response.status_code == 200
     versions = versions_response.json()
 
-    assert [version["version_number"] for version in versions] == [3, 2, 1]
+    assert [version["version_number"] for version in versions] == [2, 1]
     assert versions[0]["is_current"] is True
     assert versions[1]["is_current"] is False
-    assert versions[2]["is_current"] is False

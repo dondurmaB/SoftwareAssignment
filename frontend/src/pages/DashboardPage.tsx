@@ -4,8 +4,8 @@ import { useAuthStore } from '../store/authStore'
 import { useDocumentStore } from '../store/documentStore'
 import toast from 'react-hot-toast'
 import { Plus, FileText, LogOut, Trash2, Clock, Users, Loader2, Search } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
 import type { DocumentListItem } from '../types'
+import { formatRelativeBackendDate } from '../utils/dates'
 
 export default function DashboardPage() {
   const user = useAuthStore(s => s.user)
@@ -161,7 +161,7 @@ function DocGrid({ docs, onOpen, onDelete }: { docs: DocumentListItem[], onOpen:
             <span className={`badge badge-${doc.role}`}>{doc.role}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-muted)', fontSize: 12 }}>
               <Clock size={12} />
-              {formatDistanceToNow(new Date(doc.updated_at), { addSuffix: true })}
+              {formatRelativeBackendDate(doc.updated_at)}
             </div>
           </div>
         </div>

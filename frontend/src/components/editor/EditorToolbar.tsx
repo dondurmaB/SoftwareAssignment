@@ -7,7 +7,7 @@ export default function EditorToolbar({ editor }: Props) {
   if (!editor) return null
 
   const btn = (active: boolean, onClick: () => void, title: string, icon: React.ReactNode) => (
-    <button key={title} title={title}
+    <button key={title} type="button" title={title}
       onMouseDown={e => { e.preventDefault(); onClick() }}
       style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: 'none', borderRadius: 'var(--radius-sm)', cursor: 'pointer', background: active ? 'var(--primary-light)' : 'transparent', color: active ? 'var(--primary)' : 'var(--text-muted)', transition: 'all 0.1s' }}
       onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--surface2)' }}
@@ -19,18 +19,9 @@ export default function EditorToolbar({ editor }: Props) {
   const divider = () => <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px', flexShrink: 0 }} />
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface)', position: 'sticky', top: 56, zIndex: 50 }}>
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 2, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--surface)', flexShrink: 0 }}>
       {btn(false, () => editor.chain().focus().undo().run(), 'Undo', <Undo size={15} />)}
       {btn(false, () => editor.chain().focus().redo().run(), 'Redo', <Redo size={15} />)}
-      {divider()}
-      <select value={editor.isActive('heading', { level: 1 }) ? '1' : editor.isActive('heading', { level: 2 }) ? '2' : editor.isActive('heading', { level: 3 }) ? '3' : '0'}
-        onChange={e => { const l = parseInt(e.target.value); l === 0 ? editor.chain().focus().setParagraph().run() : editor.chain().focus().setHeading({ level: l as 1|2|3 }).run() }}
-        style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 6px', fontSize: 13, background: 'var(--surface)', cursor: 'pointer', color: 'var(--text)', height: 30 }}>
-        <option value="0">Normal</option>
-        <option value="1">Heading 1</option>
-        <option value="2">Heading 2</option>
-        <option value="3">Heading 3</option>
-      </select>
       {divider()}
       {btn(editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), 'Bold', <Bold size={15} />)}
       {btn(editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'Italic', <Italic size={15} />)}

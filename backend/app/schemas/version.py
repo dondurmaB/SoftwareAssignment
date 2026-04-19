@@ -18,4 +18,3 @@ class DocumentRestoreResponse(BaseModel):
     title: str
     current_content: str
     updated_at: datetime
-    new_version_number: int

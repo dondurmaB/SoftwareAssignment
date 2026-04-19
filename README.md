@@ -69,9 +69,10 @@ Implemented in `backend/app/`:
 
 Included in this follow-up:
 
-- Snapshot-based version restore with full audit trail
-- Restore creates a new latest version instead of mutating history
+- Snapshot-based version restore that sets document content back to a chosen checkpoint
+- Restore does not create an extra version entry
 - Initial version snapshot creation at document creation time
+- Checkpoint-style version snapshots that avoid creating a new version on every tiny save
 - SQLite foreign key enforcement for stronger delete cascade safety
 
 ## Backend Milestone 3: WebSocket Collaboration Baseline

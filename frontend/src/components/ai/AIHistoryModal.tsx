@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { aiApi } from '../../api'
 import type { AIHistoryItem } from '../../types'
 import { Bot, X, ChevronDown, ChevronUp } from 'lucide-react'
-import { formatDistanceToNow } from 'date-fns'
+import { formatRelativeBackendDate } from '../../utils/dates'
 
 interface Props {
   docId: number
@@ -106,7 +106,7 @@ export default function AIHistoryModal({ docId, onClose }: Props) {
                       {decisionStatusBadge(item.decision_status)}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                      by @{item.username} · {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })} · {item.model_name}
+                      by @{item.username} · {formatRelativeBackendDate(item.created_at)} · {item.model_name}
                     </div>
                   </div>
                   {expanded === item.interaction_id ? <ChevronUp size={16} color="var(--text-muted)" /> : <ChevronDown size={16} color="var(--text-muted)" />}

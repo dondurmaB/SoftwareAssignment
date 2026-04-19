@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.ai.cancellation import AICancellationRegistry
+from app.ai.lmstudio_provider import LMStudioProvider
 from app.ai.openai_provider import OpenAIProvider
 from app.core.database import get_db
 from app.core.config import Settings, get_settings
@@ -46,18 +47,30 @@ def build_ai_provider(settings: Settings) -> AIProvider:
     if settings.AI_PROVIDER == "mock":
         return MockAIProvider()
 
-    if not settings.OPENAI_API_KEY:
-        raise RuntimeError(
-            "AI_PROVIDER=openai requires OPENAI_API_KEY to be set."
-        )
-    if not settings.OPENAI_MODEL:
-        raise RuntimeError(
-            "AI_PROVIDER=openai requires OPENAI_MODEL to be set."
+    if settings.AI_PROVIDER == "openai":
+        if not settings.OPENAI_API_KEY:
+            raise RuntimeError(
+                "AI_PROVIDER=openai requires OPENAI_API_KEY to be set."
+            )
+        if not settings.OPENAI_MODEL:
+            raise RuntimeError(
+                "AI_PROVIDER=openai requires OPENAI_MODEL to be set."
+            )
+
+        return OpenAIProvider(
+            api_key=settings.OPENAI_API_KEY,
+            model_name=settings.OPENAI_MODEL,
         )
 
-    return OpenAIProvider(
-        api_key=settings.OPENAI_API_KEY,
-        model_name=settings.OPENAI_MODEL,
+    if not settings.LMSTUDIO_MODEL:
+        raise RuntimeError(
+            "AI_PROVIDER=lmstudio requires LMSTUDIO_MODEL to be set."
+        )
+
+    return LMStudioProvider(
+        api_key=settings.LMSTUDIO_API_KEY,
+        model_name=settings.LMSTUDIO_MODEL,
+        base_url=settings.LMSTUDIO_BASE_URL,
     )
 
 

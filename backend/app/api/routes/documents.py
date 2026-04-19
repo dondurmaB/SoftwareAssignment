@@ -66,7 +66,6 @@ def serialize_restore_result(result: DocumentRestoreResult) -> DocumentRestoreRe
         title=result.document.title,
         current_content=result.document.current_content,
         updated_at=result.document.updated_at,
-        new_version_number=result.version.version_number,
     )
 
 
@@ -119,7 +118,7 @@ def update_document(
     current_user: User = Depends(get_current_active_user),
     document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentRead:
-    """Update a document and append a version snapshot."""
+    """Update a document and persist content checkpoints without snapshot spam."""
 
     document = document_service.update_document(access.document, current_user, payload)
     return serialize_document(document, access.role)
@@ -198,14 +197,21 @@ def list_versions(
     """Return document version metadata for owner/editor roles."""
 
     versions = document_service.list_versions(access.document)
-    latest_version_id = versions[0].id if versions else None
+    current_version_id = next(
+        (
+            version.id
+            for version in versions
+            if version.content_snapshot == access.document.current_content
+        ),
+        None,
+    )
     return [
         DocumentVersionRead(
             id=version.id,
             version_number=version.version_number,
             created_by_user_id=version.created_by_user_id,
             created_at=version.created_at,
-            is_current=version.id == latest_version_id,
+            is_current=version.id == current_version_id,
         )
         for version in versions
     ]
@@ -218,11 +224,10 @@ def list_versions(
 def restore_version(
     version_id: int,
     access: DocumentAccessContext = Depends(require_document_owner),
-    current_user: User = Depends(get_current_active_user),
     document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentRestoreResponse:
-    """Restore a previous version by creating a new latest snapshot."""
+    """Restore a previous version by setting the current document content back to that checkpoint."""
 
     version = document_service.get_document_version_or_404(access.document, version_id)
-    restored = document_service.restore_version(access.document, version, current_user)
+    restored = document_service.restore_version(access.document, version)
     return serialize_restore_result(restored)

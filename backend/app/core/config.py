@@ -20,9 +20,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     DATABASE_URL: str = "sqlite:///./app.db"
-    AI_PROVIDER: Literal["mock", "openai"] = "mock"
+    AI_PROVIDER: Literal["mock", "openai", "lmstudio"] = "mock"
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str | None = None
+    LMSTUDIO_BASE_URL: str = "http://localhost:1234/v1"
+    LMSTUDIO_MODEL: str | None = None
+    LMSTUDIO_API_KEY: str = "lm-studio"
 
 
 @lru_cache

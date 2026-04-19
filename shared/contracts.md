@@ -60,6 +60,12 @@ The active frontend/backend contract uses snake_case document fields, including:
 - `GET /api/documents/{id}/versions`
 - `POST /api/documents/{id}/versions/{version_id}/restore`
 
+Document versioning notes:
+
+- the backend keeps an initial snapshot plus checkpoint-style content versions
+- content autosaves do not create a new version on every tiny update
+- restoring an older version updates the current document content without appending a new version row
+
 ### Collaboration
 
 - `WS /ws/documents/{document_id}?token=<access_token>`

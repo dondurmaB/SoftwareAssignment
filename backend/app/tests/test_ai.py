@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.api.deps as deps_module
+from app.ai.lmstudio_provider import LMStudioProvider
 from app.ai.mock_provider import MockAIProvider
 from app.api.deps import build_ai_provider, get_ai_cancellation_registry, get_ai_provider
 from app.core.config import Settings
@@ -91,6 +92,34 @@ def test_build_ai_provider_selects_openai_when_configured(monkeypatch: pytest.Mo
     }
 
 
+def test_build_ai_provider_selects_lmstudio_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeLMStudioProvider:
+        def __init__(self, *, api_key: str, model_name: str, base_url: str) -> None:
+            captured["api_key"] = api_key
+            captured["model_name"] = model_name
+            captured["base_url"] = base_url
+
+    monkeypatch.setattr(deps_module, "LMStudioProvider", FakeLMStudioProvider)
+    settings = Settings(
+        _env_file=None,
+        AI_PROVIDER="lmstudio",
+        LMSTUDIO_BASE_URL="http://localhost:1234/v1",
+        LMSTUDIO_MODEL="nvidia.nemotron-mini-4b-instruct",
+        LMSTUDIO_API_KEY="lm-studio",
+    )
+
+    provider = build_ai_provider(settings)
+
+    assert isinstance(provider, FakeLMStudioProvider)
+    assert captured == {
+        "api_key": "lm-studio",
+        "model_name": "nvidia.nemotron-mini-4b-instruct",
+        "base_url": "http://localhost:1234/v1",
+    }
+
+
 def test_build_ai_provider_requires_openai_api_key() -> None:
     settings = Settings(
         _env_file=None,
@@ -113,6 +142,55 @@ def test_build_ai_provider_requires_openai_model() -> None:
 
     with pytest.raises(RuntimeError, match="OPENAI_MODEL"):
         build_ai_provider(settings)
+
+
+def test_build_ai_provider_requires_lmstudio_model() -> None:
+    settings = Settings(
+        _env_file=None,
+        AI_PROVIDER="lmstudio",
+        LMSTUDIO_BASE_URL="http://localhost:1234/v1",
+        LMSTUDIO_MODEL=None,
+        LMSTUDIO_API_KEY="lm-studio",
+    )
+
+    with pytest.raises(RuntimeError, match="LMSTUDIO_MODEL"):
+        build_ai_provider(settings)
+
+
+def test_lmstudio_provider_wraps_openai_compatible_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, str] = {}
+
+    def fake_openai_provider_init(
+        self,
+        *,
+        api_key: str,
+        model_name: str,
+        base_url: str | None = None,
+        provider_name: str = "openai",
+    ) -> None:
+        captured["api_key"] = api_key
+        captured["model_name"] = model_name
+        captured["base_url"] = base_url or ""
+        captured["provider_name"] = provider_name
+
+    monkeypatch.setattr(deps_module, "LMStudioProvider", LMStudioProvider)
+    monkeypatch.setattr(
+        "app.ai.openai_provider.OpenAIProvider.__init__",
+        fake_openai_provider_init,
+    )
+
+    LMStudioProvider(
+        api_key="lm-studio",
+        model_name="nvidia.nemotron-mini-4b-instruct",
+        base_url="http://localhost:1234/v1",
+    )
+
+    assert captured == {
+        "api_key": "lm-studio",
+        "model_name": "nvidia.nemotron-mini-4b-instruct",
+        "base_url": "http://localhost:1234/v1",
+        "provider_name": "lmstudio",
+    }
 
 
 @pytest.mark.parametrize(

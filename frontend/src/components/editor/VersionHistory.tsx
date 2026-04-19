@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 import { useDocumentStore } from '../../store/documentStore'
-import { formatDistanceToNow } from 'date-fns'
 import { RotateCcw, X, Clock } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { formatRelativeBackendDate } from '../../utils/dates'
 
 interface Props {
   docId: number
@@ -16,12 +16,11 @@ export default function VersionHistory({ docId, onClose, onRestored }: Props) {
   useEffect(() => { fetchVersions(docId) }, [docId, fetchVersions])
 
   const handleRestore = async (versionId: number, vnum: number) => {
-    if (!confirm(`Restore to version ${vnum}? Current content will be saved as a new version.`)) return
+    if (!confirm(`Restore to version ${vnum}? Current content will be replaced with that checkpoint.`)) return
     try {
       const doc = await restoreVersion(docId, versionId)
       toast.success(`Restored to version ${vnum}`)
       onRestored(doc.current_content)
-      onClose()
     } catch {
       toast.error('Failed to restore version')
     }
@@ -50,7 +49,7 @@ export default function VersionHistory({ docId, onClose, onRestored }: Props) {
                   {v.is_current ? 'Current version' : `Version ${v.version_number}`}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 1 }}>
-                  {formatDistanceToNow(new Date(v.created_at), { addSuffix: true })}
+                  {formatRelativeBackendDate(v.created_at)}
                 </div>
               </div>
               {!v.is_current && (

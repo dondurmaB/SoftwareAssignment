@@ -2,6 +2,18 @@ import { create } from 'zustand'
 import type { DocumentRead, DocumentListItem, DocumentVersion, DocumentPermission } from '../types'
 import { documentApi } from '../api'
 
+function mergeDocumentIntoList(documents: DocumentListItem[], document: DocumentRead): DocumentListItem[] {
+  const next = {
+    id: document.id,
+    title: document.title,
+    owner_user_id: document.owner_user_id,
+    created_at: document.created_at,
+    updated_at: document.updated_at,
+    role: document.role,
+  }
+  return documents.map((item) => (item.id === document.id ? next : item))
+}
+
 interface DocumentState {
   documents: DocumentListItem[]
   currentDoc: DocumentRead | null
@@ -54,8 +66,12 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   updateContent: async (id, content) => {
     set({ saveStatus: 'saving' })
     try {
-      await documentApi.update(id, { content })
-      set({ saveStatus: 'saved' })
+      const { data } = await documentApi.update(id, { content })
+      set((s) => ({
+        currentDoc: s.currentDoc?.id === id ? data : s.currentDoc,
+        documents: mergeDocumentIntoList(s.documents, data),
+        saveStatus: 'saved',
+      }))
     } catch {
       set({ saveStatus: 'error' })
     }
@@ -64,8 +80,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   updateTitle: async (id, title) => {
     const { data } = await documentApi.update(id, { title })
     set((s) => ({
-      currentDoc: s.currentDoc?.id === id ? { ...s.currentDoc, title } : s.currentDoc,
-      documents: s.documents.map((d) => (d.id === id ? { ...d, title } : d)),
+      currentDoc: s.currentDoc?.id === id ? data : s.currentDoc,
+      documents: mergeDocumentIntoList(s.documents, data),
     }))
   },
 
@@ -84,16 +100,22 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
 
   restoreVersion: async (docId, versionId) => {
     const { data } = await documentApi.restoreVersion(docId, versionId)
+    const currentDoc = get().currentDoc
     const doc: DocumentRead = {
       id: data.id,
       title: data.title,
       current_content: data.current_content,
-      owner_user_id: get().currentDoc?.owner_user_id ?? 0,
-      created_at: get().currentDoc?.created_at ?? '',
+      owner_user_id: currentDoc?.owner_user_id ?? 0,
+      created_at: currentDoc?.created_at ?? '',
       updated_at: data.updated_at,
-      role: get().currentDoc?.role ?? 'owner',
+      role: currentDoc?.role ?? 'owner',
     }
-    set({ currentDoc: doc })
+    set((s) => ({
+      currentDoc: doc,
+      documents: mergeDocumentIntoList(s.documents, doc),
+      saveStatus: 'saved',
+    }))
+    await get().fetchVersions(docId)
     return doc
   },
 

@@ -44,6 +44,7 @@ export default function EditorPage() {
 
   const remoteEditRef = useRef(false)
   const isInitialLoadRef = useRef(true)
+  const broadcastTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   // Load document
   useEffect(() => {
@@ -116,7 +117,11 @@ export default function EditorPage() {
   // Broadcast local edits
   useEffect(() => {
     if (remoteEditRef.current || isInitialLoadRef.current || !editorContent || !connected) return
-    sendEdit(editorContent)
+    clearTimeout(broadcastTimerRef.current)
+    broadcastTimerRef.current = setTimeout(() => {
+      sendEdit(editorContent)
+    }, 120)
+    return () => clearTimeout(broadcastTimerRef.current)
   }, [editorContent, connected, sendEdit])
 
   // Title save
@@ -184,10 +189,12 @@ export default function EditorPage() {
       {/* Body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <EditorToolbar editor={canEdit ? editor : null} />
           <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
-            <div style={{ maxWidth: 820, margin: '0 auto', background: 'var(--surface)', minHeight: '100%', boxShadow: 'var(--shadow-sm)' }}>
-              <EditorContent editor={editor} />
+            <div style={{ maxWidth: 820, width: '100%', margin: '0 auto', background: 'var(--surface)', minHeight: '100%', boxShadow: 'var(--shadow-sm)', display: 'flex', flexDirection: 'column' }}>
+              <EditorToolbar editor={canEdit ? editor : null} />
+              <div style={{ flex: 1 }}>
+                <EditorContent editor={editor} />
+              </div>
             </div>
           </div>
           <div style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)', padding: '5px 24px', display: 'flex', alignItems: 'center', gap: 16, fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
