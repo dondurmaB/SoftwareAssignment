@@ -3,7 +3,7 @@ import type {
   User,
   AuthResponse, DocumentRead, DocumentListItem,
   DocumentVersion, DocumentRestoreResponse,
-  DocumentPermission, DocumentRole, AIHistoryItem, AIAction
+  DocumentPermission, DocumentRole, AIHistoryItem, AIAction, DocumentSaveMode
 } from '../types'
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ export const documentApi = {
   create: (title: string, content = '') =>
     api.post<DocumentRead>('/api/documents', { title, content }),
 
-  update: (id: number, data: { title?: string; content?: string }) =>
+  update: (id: number, data: { title?: string; content?: string; save_mode?: DocumentSaveMode }) =>
     api.put<DocumentRead>(`/api/documents/${id}`, data),
 
   delete: (id: number) =>

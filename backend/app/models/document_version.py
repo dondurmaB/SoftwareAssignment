@@ -24,6 +24,7 @@ class DocumentVersion(Base):
     version_number: Mapped[int] = mapped_column(nullable=False)
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     content_snapshot: Mapped[str] = mapped_column(Text(), nullable=False)
+    restored_from_version_number: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(), default=utc_now, nullable=False)
 
     document: Mapped["Document"] = relationship(back_populates="versions")

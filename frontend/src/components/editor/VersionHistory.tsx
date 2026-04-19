@@ -51,6 +51,11 @@ export default function VersionHistory({ docId, onClose, onRestored }: Props) {
                 <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 1 }}>
                   {formatRelativeBackendDate(v.created_at)}
                 </div>
+                {v.restored_from_version_number !== null && (
+                  <div style={{ fontSize: 11, color: 'var(--primary)', marginTop: 4 }}>
+                    Restored from version {v.restored_from_version_number}
+                  </div>
+                )}
               </div>
               {!v.is_current && (
                 <button className="btn btn-secondary btn-sm" onClick={() => handleRestore(v.id, v.version_number)} style={{ flexShrink: 0 }}>

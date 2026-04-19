@@ -1,5 +1,11 @@
 import { create } from 'zustand'
-import type { DocumentRead, DocumentListItem, DocumentVersion, DocumentPermission } from '../types'
+import type {
+  DocumentRead,
+  DocumentListItem,
+  DocumentVersion,
+  DocumentPermission,
+  DocumentSaveMode,
+} from '../types'
 import { documentApi } from '../api'
 
 function mergeDocumentIntoList(documents: DocumentListItem[], document: DocumentRead): DocumentListItem[] {
@@ -24,7 +30,7 @@ interface DocumentState {
   fetchDocuments: () => Promise<void>
   fetchDocument: (id: number) => Promise<DocumentRead>
   createDocument: (title: string) => Promise<DocumentRead>
-  updateContent: (id: number, content: string) => Promise<void>
+  updateContent: (id: number, content: string, saveMode?: DocumentSaveMode) => Promise<DocumentRead>
   updateTitle: (id: number, title: string) => Promise<void>
   deleteDocument: (id: number) => Promise<void>
   setCurrentDoc: (doc: DocumentRead | null) => void
@@ -63,17 +69,19 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     return data
   },
 
-  updateContent: async (id, content) => {
+  updateContent: async (id, content, saveMode = 'autosave') => {
     set({ saveStatus: 'saving' })
     try {
-      const { data } = await documentApi.update(id, { content })
+      const { data } = await documentApi.update(id, { content, save_mode: saveMode })
       set((s) => ({
         currentDoc: s.currentDoc?.id === id ? data : s.currentDoc,
         documents: mergeDocumentIntoList(s.documents, data),
         saveStatus: 'saved',
       }))
+      return data
     } catch {
       set({ saveStatus: 'error' })
+      throw new Error('Failed to update document content.')
     }
   },
 

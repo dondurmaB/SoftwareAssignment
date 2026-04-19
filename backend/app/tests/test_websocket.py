@@ -262,6 +262,15 @@ def test_edit_event_updates_document_content(
     assert refreshed_document is not None
     assert refreshed_document.current_content == "New live content"
 
+    versions_response = client.get(
+        f"/api/documents/{document['id']}/versions",
+        headers=owner_headers,
+    )
+    assert versions_response.status_code == 200
+    versions = versions_response.json()
+    assert len(versions) == 1
+    assert versions[0]["version_number"] == 1
+
 
 def test_second_connected_user_receives_document_update(
     client: TestClient,

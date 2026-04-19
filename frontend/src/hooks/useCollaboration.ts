@@ -4,12 +4,19 @@ import { getValidToken } from '../api'
 
 interface UseCollaborationOptions {
   docId: number
+  onSessionSync: (content: string) => void
   onRemoteEdit: (content: string, userId: number) => void
   onPresenceChange: (users: ActiveUser[]) => void
   enabled: boolean
 }
 
-export function useCollaboration({ docId, onRemoteEdit, onPresenceChange, enabled }: UseCollaborationOptions) {
+export function useCollaboration({
+  docId,
+  onSessionSync,
+  onRemoteEdit,
+  onPresenceChange,
+  enabled,
+}: UseCollaborationOptions) {
   const wsRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -44,6 +51,7 @@ export function useCollaboration({ docId, onRemoteEdit, onPresenceChange, enable
         case 'session_joined':
           setConnected(true)
           attemptsRef.current = 0
+          onSessionSync(msg.content)
           onPresenceChange(msg.active_users)
           break
         case 'document_update':
@@ -73,7 +81,7 @@ export function useCollaboration({ docId, onRemoteEdit, onPresenceChange, enable
     }
 
     ws.onerror = () => ws.close()
-  }, [docId, enabled, onRemoteEdit, onPresenceChange])
+  }, [docId, enabled, onRemoteEdit, onPresenceChange, onSessionSync])
 
   useEffect(() => {
     mountedRef.current = true

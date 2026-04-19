@@ -3,14 +3,21 @@ import { useAIStream } from '../../hooks/useAIStream'
 import { aiApi } from '../../api'
 import { Bot, X, Wand2, Check, RotateCcw, AlertCircle, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { AIAction } from '../../types'
+import type { AIAction, DocumentSaveMode } from '../../types'
 import type { Editor } from '@tiptap/react'
+
+type ProgrammaticSaveMode = Exclude<DocumentSaveMode, 'autosave'>
 
 interface Props {
   editor: Editor | null
   docId: number
   onClose: () => void
   canEdit: boolean
+  onContentApplied: (
+    nextContent: string,
+    previousContent: string,
+    saveMode: ProgrammaticSaveMode,
+  ) => Promise<void>
 }
 
 const FEATURES: { value: AIAction; label: string; desc: string }[] = [
@@ -20,7 +27,7 @@ const FEATURES: { value: AIAction; label: string; desc: string }[] = [
   { value: 'enhance', label: 'Enhance', desc: 'Improve structure and style' },
 ]
 
-export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
+export default function AIPanel({ editor, docId, onClose, canEdit, onContentApplied }: Props) {
   const [action, setAction] = useState<AIAction>('rewrite')
   const [targetLang, setTargetLang] = useState('French')
   const [editedSuggestion, setEditedSuggestion] = useState('')
@@ -60,20 +67,23 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
     const finalText = editedSuggestion || streamedText
     if (!finalText.trim()) return
 
+    const previousContent = editor.getHTML()
     try {
       await aiApi.decideOnSuggestion(suggestionId, 'accepted')
 
-      previousContentRef.current = editor.getHTML()
+      previousContentRef.current = previousContent
       const { from, to } = editor.state.selection
       if (from !== to) {
         editor.chain().focus().deleteRange({ from, to }).insertContentAt(from, finalText).run()
       } else {
         editor.chain().focus().insertContent(finalText).run()
       }
+      await onContentApplied(editor.getHTML(), previousContent, 'ai_apply')
 
       toast.success('Suggestion applied')
       resetPanel()
     } catch {
+      editor.commands.setContent(previousContent, false)
       toast.error('Failed to apply suggestion')
     }
   }
@@ -91,9 +101,18 @@ export default function AIPanel({ editor, docId, onClose, canEdit }: Props) {
 
   const handleUndo = () => {
     if (previousContentRef.current && editor) {
-      editor.commands.setContent(previousContentRef.current)
-      previousContentRef.current = ''
-      toast('Change undone')
+      const restoredContent = previousContentRef.current
+      const currentContent = editor.getHTML()
+      editor.commands.setContent(restoredContent, false)
+      onContentApplied(restoredContent, currentContent, 'manual')
+        .then(() => {
+          previousContentRef.current = ''
+          toast('Change undone')
+        })
+        .catch(() => {
+          editor.commands.setContent(currentContent, false)
+          toast.error('Failed to undo change')
+        })
     }
   }
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import NullPool
@@ -39,6 +39,25 @@ def init_db() -> None:
     import app.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_sqlite_document_version_columns()
+
+
+def _ensure_sqlite_document_version_columns() -> None:
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.begin() as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(text("PRAGMA table_info(document_versions)"))
+        }
+        if "restored_from_version_number" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE document_versions "
+                    "ADD COLUMN restored_from_version_number INTEGER"
+                )
+            )
 
 
 def get_db() -> Generator[Session, None, None]:

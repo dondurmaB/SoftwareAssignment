@@ -118,7 +118,7 @@ def update_document(
     current_user: User = Depends(get_current_active_user),
     document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentRead:
-    """Update a document and persist content checkpoints without snapshot spam."""
+    """Update a document, using save mode to distinguish autosave from explicit version checkpoints."""
 
     document = document_service.update_document(access.document, current_user, payload)
     return serialize_document(document, access.role)
@@ -211,6 +211,7 @@ def list_versions(
             version_number=version.version_number,
             created_by_user_id=version.created_by_user_id,
             created_at=version.created_at,
+            restored_from_version_number=version.restored_from_version_number,
             is_current=version.id == current_version_id,
         )
         for version in versions
@@ -224,10 +225,11 @@ def list_versions(
 def restore_version(
     version_id: int,
     access: DocumentAccessContext = Depends(require_document_owner),
+    current_user: User = Depends(get_current_active_user),
     document_service: DocumentService = Depends(get_document_service),
 ) -> DocumentRestoreResponse:
-    """Restore a previous version by setting the current document content back to that checkpoint."""
+    """Restore a previous version and append a new version entry recording the restore source."""
 
     version = document_service.get_document_version_or_404(access.document, version_id)
-    restored = document_service.restore_version(access.document, version)
+    restored = document_service.restore_version(access.document, version, current_user)
     return serialize_restore_result(restored)

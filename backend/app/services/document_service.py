@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, and_, func, or_, select
@@ -13,7 +12,7 @@ from app.models.document import Document
 from app.models.document_permission import DocumentPermission, DocumentRole
 from app.models.document_version import DocumentVersion
 from app.models.user import User
-from app.schemas.document import DocumentCreateRequest, DocumentUpdateRequest
+from app.schemas.document import DocumentCreateRequest, DocumentSaveMode, DocumentUpdateRequest
 
 
 @dataclass
@@ -25,10 +24,6 @@ class DocumentVisibility:
 @dataclass
 class DocumentRestoreResult:
     document: Document
-
-
-VERSION_CHECKPOINT_WINDOW = timedelta(minutes=1)
-
 
 class DocumentService:
     """Business logic for document lifecycle and version history."""
@@ -97,23 +92,36 @@ class DocumentService:
     def update_document(self, document: Document, actor: User, payload: DocumentUpdateRequest) -> Document:
         title_changed = False
         content_changed = False
+        content_provided = payload.content is not None
 
         if payload.title is not None:
             next_title = payload.title.strip()
             if next_title != document.title:
                 document.title = next_title
                 title_changed = True
-        if payload.content is not None and payload.content != document.current_content:
+        if content_provided and payload.content != document.current_content:
             document.current_content = payload.content
             content_changed = True
 
-        if not title_changed and not content_changed:
+        create_version = self._should_create_version(
+            save_mode=payload.save_mode,
+            content_provided=content_provided,
+        )
+
+        if not title_changed and not content_changed and not create_version:
             return document
 
         now = utc_now()
         document.updated_at = now
-        if content_changed:
-            self._save_checkpoint(document=document, actor=actor, now=now)
+        if create_version:
+            self.db.add(
+                self._build_version_snapshot(
+                    document_id=document.id,
+                    created_by_user_id=actor.id,
+                    content_snapshot=document.current_content,
+                    created_at=now,
+                )
+            )
         self.db.add(document)
         self._commit_or_rollback()
         self.db.refresh(document)
@@ -156,10 +164,21 @@ class DocumentService:
         self,
         document: Document,
         version: DocumentVersion,
+        actor: User,
     ) -> DocumentRestoreResult:
+        now = utc_now()
         document.current_content = version.content_snapshot
-        document.updated_at = utc_now()
+        document.updated_at = now
 
+        self.db.add(
+            self._build_version_snapshot(
+                document_id=document.id,
+                created_by_user_id=actor.id,
+                content_snapshot=version.content_snapshot,
+                created_at=now,
+                restored_from_version_number=version.version_number,
+            )
+        )
         self.db.add(document)
         self._commit_or_rollback()
         self.db.refresh(document)
@@ -180,67 +199,21 @@ class DocumentService:
         created_by_user_id: int,
         content_snapshot: str,
         created_at=None,
+        restored_from_version_number: int | None = None,
     ) -> DocumentVersion:
         return DocumentVersion(
             document_id=document_id,
             version_number=self._next_version_number(document_id),
             created_by_user_id=created_by_user_id,
             content_snapshot=content_snapshot,
+            restored_from_version_number=restored_from_version_number,
             created_at=created_at or utc_now(),
         )
 
-    def _get_latest_version(self, document_id: int) -> DocumentVersion | None:
-        statement = (
-            select(DocumentVersion)
-            .where(DocumentVersion.document_id == document_id)
-            .order_by(DocumentVersion.version_number.desc(), DocumentVersion.id.desc())
-            .limit(1)
-        )
-        return self.db.scalar(statement)
-
-    def _save_checkpoint(self, *, document: Document, actor: User, now) -> None:
-        latest_version = self._get_latest_version(document.id)
-
-        if latest_version is None:
-            self.db.add(
-                self._build_version_snapshot(
-                    document_id=document.id,
-                    created_by_user_id=actor.id,
-                    content_snapshot=document.current_content,
-                    created_at=now,
-                )
-            )
-            return
-
-        if latest_version.content_snapshot == document.current_content:
-            return
-
-        if latest_version.version_number == 1:
-            self.db.add(
-                self._build_version_snapshot(
-                    document_id=document.id,
-                    created_by_user_id=actor.id,
-                    content_snapshot=document.current_content,
-                    created_at=now,
-                )
-            )
-            return
-
-        if now - latest_version.created_at < VERSION_CHECKPOINT_WINDOW:
-            latest_version.content_snapshot = document.current_content
-            latest_version.created_at = now
-            latest_version.created_by_user_id = actor.id
-            self.db.add(latest_version)
-            return
-
-        self.db.add(
-            self._build_version_snapshot(
-                document_id=document.id,
-                created_by_user_id=actor.id,
-                content_snapshot=document.current_content,
-                created_at=now,
-            )
-        )
+    def _should_create_version(self, *, save_mode: DocumentSaveMode, content_provided: bool) -> bool:
+        if not content_provided:
+            return False
+        return save_mode in {"manual", "ai_apply"}
 
     def _commit_or_rollback(self) -> None:
         try:

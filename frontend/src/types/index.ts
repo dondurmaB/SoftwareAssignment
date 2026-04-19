@@ -37,8 +37,11 @@ export interface DocumentVersion {
   version_number: number
   created_by_user_id: number
   created_at: string
+  restored_from_version_number: number | null
   is_current: boolean
 }
+
+export type DocumentSaveMode = 'autosave' | 'manual' | 'ai_apply'
 
 export interface DocumentRestoreResponse {
   id: number

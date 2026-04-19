@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-import app.services.document_service as document_service_module
 from app.models.document_permission import DocumentPermission
 from app.models.document_version import DocumentVersion
 
@@ -555,7 +553,7 @@ def test_restore_updates_document_content_correctly(
     assert document_response.json()["current_content"] == "draft"
 
 
-def test_restore_does_not_create_new_version_snapshot(
+def test_autosave_updates_current_content_without_creating_version(
     client: TestClient,
     create_user: Callable[..., dict[str, object]],
     auth_headers: Callable[[str], dict[str, str]],
@@ -564,31 +562,28 @@ def test_restore_does_not_create_new_version_snapshot(
     headers = auth_headers(owner["access_token"])
     document = create_document(client, headers, content="base")
 
-    client.put(f"/api/documents/{document['id']}", json={"content": "v1"}, headers=headers)
-    client.put(f"/api/documents/{document['id']}", json={"content": "v2"}, headers=headers)
-    versions = client.get(f"/api/documents/{document['id']}/versions", headers=headers).json()
-    version_to_restore = next(version for version in versions if version["version_number"] == 1)
-
-    restore_response = client.post(
-        f"/api/documents/{document['id']}/versions/{version_to_restore['id']}/restore",
+    update_response = client.put(
+        f"/api/documents/{document['id']}",
+        json={"content": "autosaved draft", "save_mode": "autosave"},
         headers=headers,
     )
-    assert restore_response.status_code == 200
+    assert update_response.status_code == 200
+    assert update_response.json()["current_content"] == "autosaved draft"
 
-    versions_after_restore = client.get(f"/api/documents/{document['id']}/versions", headers=headers)
-    assert versions_after_restore.status_code == 200
-    payload = versions_after_restore.json()
-    assert len(payload) == 2
-    assert [version["version_number"] for version in payload] == [2, 1]
+    versions_after_autosave = client.get(f"/api/documents/{document['id']}/versions", headers=headers)
+    assert versions_after_autosave.status_code == 200
+    payload = versions_after_autosave.json()
+    assert len(payload) == 1
+    assert payload[0]["version_number"] == 1
     assert payload[0]["is_current"] is False
-    restored_version = next(version for version in payload if version["version_number"] == 1)
-    assert restored_version["is_current"] is True
+
+    document_response = client.get(f"/api/documents/{document['id']}", headers=headers)
+    assert document_response.status_code == 200
+    assert document_response.json()["current_content"] == "autosaved draft"
 
 
-def test_checkpoint_window_coalesces_rapid_updates_into_latest_version(
+def test_manual_save_creates_version_even_after_autosave_updated_current_content(
     client: TestClient,
-    db_session,
-    monkeypatch,
     create_user: Callable[..., dict[str, object]],
     auth_headers: Callable[[str], dict[str, str]],
 ) -> None:
@@ -596,18 +591,45 @@ def test_checkpoint_window_coalesces_rapid_updates_into_latest_version(
     headers = auth_headers(owner["access_token"])
     document = create_document(client, headers, content="base")
 
-    checkpoint_times = iter(
-        [
-            datetime(2099, 1, 1, 12, 0, 0),
-            datetime(2099, 1, 1, 12, 0, 10),
-            datetime(2099, 1, 1, 12, 0, 20),
-        ]
+    autosave_response = client.put(
+        f"/api/documents/{document['id']}",
+        json={"content": "draft v1", "save_mode": "autosave"},
+        headers=headers,
     )
-    monkeypatch.setattr(document_service_module, "utc_now", lambda: next(checkpoint_times))
+    assert autosave_response.status_code == 200
 
-    client.put(f"/api/documents/{document['id']}", json={"content": "v1"}, headers=headers)
-    client.put(f"/api/documents/{document['id']}", json={"content": "v2"}, headers=headers)
-    client.put(f"/api/documents/{document['id']}", json={"content": "v3"}, headers=headers)
+    manual_save_response = client.put(
+        f"/api/documents/{document['id']}",
+        json={"content": "draft v1", "save_mode": "manual"},
+        headers=headers,
+    )
+    assert manual_save_response.status_code == 200
+
+    versions_response = client.get(f"/api/documents/{document['id']}/versions", headers=headers)
+    assert versions_response.status_code == 200
+    payload = versions_response.json()
+    assert len(payload) == 2
+    assert [version["version_number"] for version in payload] == [2, 1]
+    assert payload[0]["is_current"] is True
+    assert payload[0]["restored_from_version_number"] is None
+
+
+def test_ai_apply_creates_version_snapshot(
+    client: TestClient,
+    db_session,
+    create_user: Callable[..., dict[str, object]],
+    auth_headers: Callable[[str], dict[str, str]],
+) -> None:
+    owner = create_user(email="owner@example.com", username="owner")
+    headers = auth_headers(owner["access_token"])
+    document = create_document(client, headers, content="base")
+
+    ai_apply_response = client.put(
+        f"/api/documents/{document['id']}",
+        json={"content": "AI polished content", "save_mode": "ai_apply"},
+        headers=headers,
+    )
+    assert ai_apply_response.status_code == 200
 
     versions_response = client.get(f"/api/documents/{document['id']}/versions", headers=headers)
     assert versions_response.status_code == 200
@@ -616,6 +638,7 @@ def test_checkpoint_window_coalesces_rapid_updates_into_latest_version(
     assert len(payload) == 2
     assert [version["version_number"] for version in payload] == [2, 1]
     assert payload[0]["is_current"] is True
+    assert payload[0]["restored_from_version_number"] is None
 
     latest_version = db_session.scalar(
         select(DocumentVersion).where(
@@ -624,8 +647,50 @@ def test_checkpoint_window_coalesces_rapid_updates_into_latest_version(
         )
     )
     assert latest_version is not None
-    assert latest_version.content_snapshot == "v3"
-    assert latest_version.created_at == datetime(2099, 1, 1, 12, 0, 20)
+    assert latest_version.content_snapshot == "AI polished content"
+    assert latest_version.restored_from_version_number is None
+
+
+def test_restore_creates_new_version_with_restore_metadata(
+    client: TestClient,
+    db_session,
+    create_user: Callable[..., dict[str, object]],
+    auth_headers: Callable[[str], dict[str, str]],
+) -> None:
+    owner = create_user(email="owner@example.com", username="owner")
+    headers = auth_headers(owner["access_token"])
+    document = create_document(client, headers, content="base")
+
+    client.put(f"/api/documents/{document['id']}", json={"content": "v1"}, headers=headers)
+    client.put(f"/api/documents/{document['id']}", json={"content": "v2"}, headers=headers)
+
+    versions_before_restore = client.get(f"/api/documents/{document['id']}/versions", headers=headers).json()
+    original_version = next(version for version in versions_before_restore if version["version_number"] == 1)
+
+    restore_response = client.post(
+        f"/api/documents/{document['id']}/versions/{original_version['id']}/restore",
+        headers=headers,
+    )
+    assert restore_response.status_code == 200
+
+    versions_after_restore = client.get(f"/api/documents/{document['id']}/versions", headers=headers)
+    assert versions_after_restore.status_code == 200
+    payload = versions_after_restore.json()
+
+    assert [version["version_number"] for version in payload] == [4, 3, 2, 1]
+    assert payload[0]["is_current"] is True
+    assert payload[0]["restored_from_version_number"] == 1
+    assert payload[1]["is_current"] is False
+
+    restored_version = db_session.scalar(
+        select(DocumentVersion).where(
+            DocumentVersion.document_id == document["id"],
+            DocumentVersion.version_number == 4,
+        )
+    )
+    assert restored_version is not None
+    assert restored_version.content_snapshot == "base"
+    assert restored_version.restored_from_version_number == 1
 
 
 def test_editor_cannot_restore(
@@ -746,6 +811,7 @@ def test_get_versions_shows_correct_order_and_latest_version(
     assert versions_response.status_code == 200
     versions = versions_response.json()
 
-    assert [version["version_number"] for version in versions] == [2, 1]
+    assert [version["version_number"] for version in versions] == [3, 2, 1]
     assert versions[0]["is_current"] is True
     assert versions[1]["is_current"] is False
+    assert versions[2]["is_current"] is False
