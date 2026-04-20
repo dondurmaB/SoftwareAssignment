@@ -16,12 +16,18 @@ class PromptSet:
 
 
 def build_prompt_set(action: AIAction, selected_text: str, options: dict[str, str]) -> PromptSet:
+    output_rule = (
+        "Output only the final transformed text. Do not add any introduction, commentary, explanation, "
+        "title, label, or note such as 'Here is the revised version'. Do not wrap the whole answer in "
+        "quotation marks unless the original content itself requires them."
+    )
+
     if action == AIAction.rewrite:
         tone = options.get("tone", "professional")
         system_prompt = (
             "You are a professional writing assistant. Rewrite the provided text "
             f"to improve clarity, structure, and flow. Keep the tone {tone}. "
-            "Preserve the original meaning and return only the rewritten text."
+            f"Preserve the original meaning. {output_rule}"
         )
     elif action == AIAction.summarize:
         length = options.get("length", "medium")
@@ -37,14 +43,14 @@ def build_prompt_set(action: AIAction, selected_text: str, options: dict[str, st
         system_prompt = (
             "You are an aggressive summarizer. Compress the provided text to only its core point or points. "
             "Remove repetition, filler, examples, background detail, and softening language. "
-            f"{length_instruction} Return only the summary text."
+            f"{length_instruction} {output_rule}"
         )
     elif action == AIAction.translate:
         target_language = options.get("target_language", "English")
         system_prompt = (
             "You are a professional translator. Translate the provided text faithfully "
             f"into {target_language}. Preserve the original meaning and nuance where possible. "
-            "Return only the translated text."
+            f"{output_rule}"
         )
     elif action == AIAction.enhance:
         instruction = options.get("instruction")
@@ -53,19 +59,18 @@ def build_prompt_set(action: AIAction, selected_text: str, options: dict[str, st
             system_prompt = (
                 "You are an expert writing assistant. Enhance the provided text according "
                 f"to this instruction: {instruction}. Preserve the original meaning unless "
-                "the instruction requires a stylistic change. Return only the enhanced text."
+                f"the instruction requires a stylistic change. {output_rule}"
             )
         elif style:
             system_prompt = (
                 "You are an expert writing assistant. Improve the provided text for clarity, "
                 f"grammar, and structure using a {style} style. Preserve the original meaning "
-                "and return only the enhanced text."
+                f"and preserve the intended message. {output_rule}"
             )
         else:
             system_prompt = (
                 "You are an expert writing assistant. Improve the provided text for clarity, "
-                "grammar, and structure while preserving the original meaning. Return only "
-                "the enhanced text."
+                f"grammar, and structure while preserving the original meaning. {output_rule}"
             )
     else:
         raise ValueError(f"Unsupported AI action: {action}")

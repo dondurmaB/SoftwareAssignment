@@ -17,6 +17,7 @@ from app.core.config import Settings
 from app.main import app
 from app.models.ai_interaction import AIAction, AIInteraction, AIInteractionStatus
 from app.models.ai_suggestion import AISuggestion, AISuggestionDecisionStatus
+from app.services.ai_service import AIService
 
 
 TEST_PROVIDER_RESPONSES: dict[AIAction, list[str]] = {
@@ -215,6 +216,22 @@ def test_mock_provider_supports_new_actions(action: AIAction, expected: str) -> 
 
     chunks = asyncio.run(collect_chunks())
     assert "".join(chunks) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw_text", "expected"),
+    [
+        ("Here's a revised version of your statement:\nImproved sentence.", "Improved sentence."),
+        ("Here is the improved version...\nCleaner paragraph.", "Cleaner paragraph."),
+        ("Summary: Brief summary.", "Brief summary."),
+        ("Translated text: Bonjour.", "Bonjour."),
+        ('"Wrapped result."', "Wrapped result."),
+        ("“Wrapped result.”", "Wrapped result."),
+        ("Summary statistics are useful.", "Summary statistics are useful."),
+    ],
+)
+def test_ai_output_cleanup_strips_wrappers_and_outer_quotes(raw_text: str, expected: str) -> None:
+    assert AIService._clean_generated_text(raw_text) == expected
 
 
 def create_document(
@@ -586,6 +603,57 @@ def test_stream_endpoint_returns_progressive_chunks_and_persists_history(
     assert suggestion is not None
     assert suggestion.suggested_text == "Better rewritten content."
     assert suggestion.decision_status == AISuggestionDecisionStatus.pending
+
+
+def test_stream_persists_cleaned_suggestion_text_when_provider_adds_wrapper(
+    client: TestClient,
+    db_session,
+    auth_headers: Callable[[str], dict[str, str]],
+    create_user: Callable[..., dict[str, object]],
+) -> None:
+    class WrappedAIProvider:
+        model_name = "wrapped-test-provider"
+
+        async def stream_completion(
+            self,
+            *,
+            action: AIAction,
+            system_prompt: str,
+            user_prompt: str,
+        ) -> AsyncIterator[str]:
+            del action, system_prompt, user_prompt
+            yield "Here is the revised version:\n"
+            yield '"Better rewritten content."'
+
+    app.dependency_overrides[get_ai_provider] = lambda: WrappedAIProvider()
+
+    owner = create_user(email="owner@example.com", username="owner")
+    document = create_document(client, auth_headers(owner["access_token"]))
+
+    status_code, lines = stream_ai_request(
+        client,
+        auth_headers(owner["access_token"]),
+        document_id=document["id"],
+        action="rewrite",
+        selected_text="Improve this paragraph",
+    )
+
+    assert status_code == 200
+    _, done_payload = parse_sse(lines)
+    assert done_payload is not None
+
+    suggestion = db_session.get(AISuggestion, done_payload["suggestion_id"])
+    assert suggestion is not None
+    assert suggestion.suggested_text == "Better rewritten content."
+
+    history_response = client.get(
+        f"/api/ai/history/{document['id']}",
+        headers=auth_headers(owner["access_token"]),
+    )
+    assert history_response.status_code == 200
+    assert history_response.json()[0]["suggested_text"] == "Better rewritten content."
+
+    app.dependency_overrides[get_ai_provider] = lambda: TestMockAIProvider()
 
 
 def test_history_endpoint_returns_persisted_interactions(

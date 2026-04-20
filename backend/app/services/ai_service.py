@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator
 
 from fastapi import HTTPException, status
@@ -80,9 +81,11 @@ class AIService:
                 )
                 return
 
+            raw_suggestion_text = "".join(accumulated_chunks)
+            cleaned_suggestion_text = self._clean_generated_text(raw_suggestion_text)
             suggestion = AISuggestion(
                 ai_interaction_id=interaction.id,
-                suggested_text="".join(accumulated_chunks),
+                suggested_text=cleaned_suggestion_text or raw_suggestion_text.strip(),
             )
             interaction.status = AIInteractionStatus.completed
             self.db.add(suggestion)
@@ -229,3 +232,49 @@ class AIService:
     def _format_canceled_event(payload: str) -> str:
         data = json.loads(payload)
         return f"event: canceled\ndata: {json.dumps(data)}\n\n"
+
+    @staticmethod
+    def _clean_generated_text(text: str) -> str:
+        cleaned = text.strip()
+        if not cleaned:
+            return cleaned
+
+        wrapper_patterns = [
+            r"""^here(?:'s| is)\s+(?:an?\s+)?(?:revised|improved|enhanced|rewritten|translated|polished)\s+version(?:\s+of\s+(?:your|the)\s+(?:provided\s+)?(?:text|statement|content))?(?:\s+based\s+on\s+the\s+instructions)?\s*[:\-–—.…]*\s*""",
+            r"""^here(?:'s| is)\s+the\s+(?:revised|improved|enhanced|rewritten|translated|polished)\s+version(?:\s+of\s+(?:your|the)\s+(?:provided\s+)?(?:text|statement|content))?\s*[:\-–—.…]*\s*""",
+            r"""^(?:rewritten|revised|improved|enhanced)\s+text\s*:\s*""",
+            r"""^(?:summary|translated\s+text|translation|enhanced\s+text)\s*:\s*""",
+        ]
+
+        for _ in range(3):
+            stripped = cleaned.lstrip()
+            changed = False
+            for pattern in wrapper_patterns:
+                match = re.match(pattern, stripped, flags=re.IGNORECASE)
+                if not match:
+                    continue
+
+                candidate = stripped[match.end():].lstrip()
+                if candidate:
+                    cleaned = candidate
+                    changed = True
+                    break
+            if not changed:
+                break
+
+        cleaned = cleaned.strip()
+
+        quote_pairs = {
+            '"': '"',
+            "'": "'",
+            "“": "”",
+            "‘": "’",
+        }
+        for opening_quote, closing_quote in quote_pairs.items():
+            if cleaned.startswith(opening_quote) and cleaned.endswith(closing_quote):
+                inner = cleaned[len(opening_quote) : len(cleaned) - len(closing_quote)].strip()
+                if inner and opening_quote not in inner and closing_quote not in inner:
+                    cleaned = inner
+                break
+
+        return cleaned.strip()
